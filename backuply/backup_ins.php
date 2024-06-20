@@ -6,8 +6,10 @@
 */
 
 //PHP Options
+$keepalive = 25;
 if(!set_time_limit(300)){
 	set_time_limit(60);
+	$keepalive = 25;
 }
 error_reporting(E_ALL);
 ignore_user_abort(true);
@@ -865,7 +867,16 @@ function backuply_mysql_connect($host, $user, $pass, $newlink = false){
 		$exh = explode(':', $host);
 
 		if(!empty($exh[1])){
-			$sconn = @mysqli_connect($exh[0], $user, $pass, '', $exh[1]);
+			$sock = null;
+			$port = $exh[1];
+
+			// This is when the db connection is made using socket.
+			if(!is_numeric($exh[1])){
+				$sock = $exh[1];
+				$port = null;
+			}
+
+			$sconn = @mysqli_connect($exh[0], $user, $pass, '', $port, $sock);
 		}else{
 			$sconn = @mysqli_connect($host, $user, $pass);
 		}
@@ -1385,7 +1396,7 @@ Backuply';
 		backuply_copy_log_file(false); // For Last Log File
 
 		die();
-	}	
+	}
 	
 	if($txt == 'DONE'){
 		backuply_backup_stop_checkpoint();
@@ -1430,7 +1441,7 @@ Backuply';
 		}
 		
 		backuply_status_log('Archive created with a file size of '. backuply_format_size($info_data['size']) , 'info', 100);
-		update_option('backuply_last_backup', time());
+		update_option('backuply_last_backup', time(), false);
 		backuply_status_log('Backup Successfully Completed', 'success', 100);
 		
 		backuply_copy_log_file(false); // For Last Log File
@@ -1665,7 +1676,7 @@ function backuply_remote_upload($finished = false){
 # BACKUP LOGIC STARTS HERE !
 #####################################################
 
-global $user, $globals, $can_write, $error;
+global $user, $globals, $can_write, $error, $backuply;
 
 // Check if we can write
 $can_write = backuply_can_create_file();
@@ -1677,6 +1688,10 @@ if(empty($can_write)){
 
 // Retrieve all the information from the form
 $data = array();
+
+if(empty($backuply['excludes'])){
+	$backuply['excludes'] = [];
+}
 
 //Exclude the "backuply" folder
 $backuply['excludes']['exact'][] = backuply_cleanpath(BACKUPLY_BACKUP_DIR);
@@ -1743,7 +1758,7 @@ backuply_backup_stop_checkpoint();
 
 // We need to stop execution in 25 secs.. We will be called again if the process is incomplete
 // Set default value
-$keepalive = 25;
+//$keepalive = 25;
 $GLOBALS['end'] = (int) time() + $keepalive;
 
 $name = $data['name'];

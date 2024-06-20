@@ -437,7 +437,7 @@ function backuply_get_status($last_log = 0){
 	if(!file_exists($log_file)){
 		$logs[] = 'Something went wrong!|error';
 		delete_option('backuply_status');
-		update_option('backuply_backup_stopped', 1);
+		update_option('backuply_backup_stopped', 1, false);
 		return $logs;
 	}
 	
@@ -801,10 +801,13 @@ function backuply_log($data){
  */
 function backuply_preg_replace($pattern, $file, &$var, $valuenum, $stripslashes = ''){	
 	preg_match($pattern, $file, $matches);
-	if(empty($stripslashes)){
-		$var = trim($matches[$valuenum]);
-	}else{
-		$var = stripslashes(trim($matches[$valuenum]));
+
+	if(!empty($matches) && !empty($matches[$valuenum])){
+		if(empty($stripslashes)){
+			$var = trim($matches[$valuenum]);
+		}else{
+			$var = stripslashes(trim($matches[$valuenum]));
+		}
 	}
 }
 
@@ -829,7 +832,7 @@ function backuply_license(){
 		return;
 	}
 
-	$resp = wp_remote_get(BACKUPLY_API.'/license.php?license='.$license, array('timeout' => 30));
+	$resp = wp_remote_get(BACKUPLY_API.'/license.php?license='.$license.'&url='.rawurlencode(esc_url_raw(home_url())), array('timeout' => 30));
 
 	if(is_array($resp)){
 		$json = json_decode($resp['body'], true);
@@ -859,7 +862,7 @@ function backuply_load_license(){
 	global $backuply;
 	
 	// Load license
-	$backuply['license'] = get_option('backuply_license');
+	$backuply['license'] = get_option('backuply_license', []);
 
 	if(empty($backuply['license']['last_update'])){
 		$backuply['license']['last_update'] = time() - 86600;
@@ -996,20 +999,21 @@ function backuply_delete_backup($tar_file) {
 	if(!empty($files_exists)){
 		// Delete the backup
 		@unlink($backup_dir.'/'.$_file);
-		//backuply_log($_file.' Backup deleted successfully');
-		
+
 		// Delete the backup_info file
 		@unlink($backup_info_dir.'/'.$bkey.'.php');
-		//backuply_log($_file.' Backupi info file deleted successfully');
 		
 		// If the Location is remote
-		@unlink($backup_dir.'/'.$bkey.'.php');
-		@unlink($backup_dir.'/'.$bkey.'.info'); // Changed to info file since 1.0.2
-		
-		// Deleting log files from remote and local
-		@unlink($backup_dir.'/'.$bkey.'.log');
-		@unlink(BACKUPLY_BACKUP_DIR . $bkey.'_log.php');
-		
+		if(strpos($backup_dir, '://') !== FALSE){
+			@unlink($backup_dir.'/'.$bkey.'.info'); // Changed to info file since 1.0.2
+			@unlink($backup_dir.'/'.$bkey.'.log');
+		}
+
+		// Deleting log files from local
+		if(file_exists(BACKUPLY_BACKUP_DIR . $bkey.'_log.php')){
+			@unlink(BACKUPLY_BACKUP_DIR . $bkey.'_log.php');
+		}
+
 		$deleted = true;
 	}else{
 
@@ -1018,11 +1022,15 @@ function backuply_delete_backup($tar_file) {
 		
 		// If the Location is remote
 		@unlink($backup_dir.'/'.$bkey.'.php');
-		@unlink($backup_dir.'/'.$bkey.'.info'); // Changed to info file since 1.0.2
+		if(strpos($backup_dir, '://') !== FALSE){
+			@unlink($backup_dir.'/'.$bkey.'.info'); // Changed to info file since 1.0.2
+			@unlink($backup_dir.'/'.$bkey.'.log');
+		}
 		
 		// Deleting log files from remote and local
-		@unlink($backup_dir.'/'.$bkey.'.log');
-		@unlink(BACKUPLY_BACKUP_DIR . $bkey.'_log.php');
+		if(file_exists(BACKUPLY_BACKUP_DIR . $bkey.'_log.php')){
+			@unlink(BACKUPLY_BACKUP_DIR . $bkey.'_log.php');
+		}
 		
 		$deleted = true;
 	}
@@ -1164,22 +1172,21 @@ function backuply_stream_wrapper_register($protocol, $classname){
 
 // Includes Lib Files
 function backuply_include_lib($protocol) {
-	
+
 	if(!class_exists($protocol)){
-		
 		if(file_exists(BACKUPLY_DIR.'/lib/'.$protocol.'.php')) {
 			include_once(BACKUPLY_DIR.'/lib/'.$protocol.'.php');
 			return true;
 		}
-		
+
 		if(defined('BACKUPLY_PRO') && defined('BACKUPLY_PRO_DIR') && file_exists(BACKUPLY_PRO_DIR . '/lib/' .$protocol . '.php')) {
 			include_once(BACKUPLY_PRO_DIR . '/lib/' .$protocol . '.php');
 			return true;
 		}
-		
+
 		return false;
 	}
-	
+
 	return true;
 }
 
@@ -1612,11 +1619,6 @@ function backuply_copy_log_file($is_restore = false, $file_name = ''){
 
 }
 
-function backuply_clean_file_name($file){
-	return str_replace(['..', '/'], '', $file);
-}
-
-
 function backuply_pattern_type_text($type) {
 		
 	if(empty($type)){
@@ -1786,7 +1788,7 @@ function backuply_schedule_quota_updation($location){
 			}
 		}
 		
-		update_option('backuply_remote_backup_locs', $info);
+		update_option('backuply_remote_backup_locs', $info, false);
 	}
 
 	backuply_log('Scheduled Quota Update: Fetched Quota updated successfully!');
@@ -1803,7 +1805,7 @@ function backuply_delete_tmp(){
 
 	if(!empty($files)){
 		foreach($files as $file){
-			if(!file_exists($file)){
+			if(!file_exists($file) || is_dir($file)){
 				continue;
 			}
 
@@ -1841,7 +1843,28 @@ function backuply_delete_tmp(){
 				}
 			}
 		}
-
 	}
+}
 
+function backuply_add_mime_types($mimes) {
+
+    if(!array_key_exists('tar', $mimes)){
+        $mimes['tar'] =  'application/x-tar';
+    }
+
+    if(!array_key_exists('gz|gzip', $mimes) && !array_key_exists('gz', $mimes)){
+        $mimes['gz|gzip'] = 'application/x-gzip';
+    }
+
+    return $mimes;
+}
+
+function backuply_sanitize_filename($filename){
+	$filename = sanitize_file_name($filename);
+	// We need to remove "_" as sanitize_file_name adds it if the file 
+	// have more than 2 extensions, which in our case happens sometimes, if the 
+	// URL of the website, has a sub domain or has TLD as .co.in or similar.
+	$filename = str_replace('_.', '.', $filename);
+
+	return $filename;
 }

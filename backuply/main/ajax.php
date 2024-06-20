@@ -75,7 +75,7 @@ function backuply_download_backup() {
 	}
 	
 	$filename = backuply_optget('backup_name');
-	$filename = backuply_clean_file_name($filename);
+	$filename = backuply_sanitize_filename($filename);
 	$backups_dir = backuply_glob('backups');
 	
 	$file = $backups_dir . '/'. $filename;
@@ -216,7 +216,7 @@ function backuply_stop_backup() {
 	backuply_ajax_nonce_verify();
 	
 	backuply_status_log('Stopping the Backup', 'info', -1);
-	update_option('backuply_backup_stopped', true);
+	update_option('backuply_backup_stopped', true, false);
 	wp_send_json(array('success' => true));
 }
 
@@ -252,7 +252,7 @@ function backuply_force_stop() {
 	backuply_ajax_nonce_verify();
 	
 	delete_option('backuply_status');
-	update_option('backuply_backup_stopped', true);
+	update_option('backuply_backup_stopped', true, false);
 	
 	if(file_exists(BACKUPLY_BACKUP_DIR . 'restoration/restoration.php')){
 		@unlink(BACKUPLY_BACKUP_DIR . 'restoration/restoration.php');
@@ -328,7 +328,7 @@ function backuply_restore_response($is_last = false) {
 	if(!$is_last && !empty($_REQUEST['restore_db']) && !empty($_REQUEST['is_migrating'])){
 		$session_data = array('time' => time(), 'key' => backuply_optreq('sess_key'), 'user_id' => backuply_optreq('user_id'));
 	
-		update_option('backuply_restore_session_key', $session_data);
+		update_option('backuply_restore_session_key', $session_data, false);
 		
 		backuply_status_log('Repairing database serialization', 'info', 78);
 		$clones = ['options' => 'option', 'postmeta' => 'meta', 'commentmeta' => 'meta'];
@@ -407,7 +407,7 @@ Backuply';
 	}
 
 	backuply_status_log('Restore performed successfully.', 'success', 100);
-	update_option('backuply_last_restore', time());
+	update_option('backuply_last_restore', time(), false);
 	backuply_delete_rinfo_on_restore();
 	backuply_copy_log_file(true);
 	backuply_clean_restoration_file();
@@ -592,7 +592,7 @@ function backuply_get_last_logs(){
 	$is_restore = backuply_optget('is_restore');
 	$backup_log_name = !empty($_GET['file_name']) ? backuply_optget('file_name') : 'backuply_backup_log.php';
 	$location_id = !empty($_GET['proto_id']) ? backuply_optget('proto_id') : '';	
-	$backup_log_name = backuply_clean_file_name($backup_log_name);
+	$backup_log_name = backuply_sanitize_filename($backup_log_name);
 	
 	$log_fname = !empty($is_restore) ? 'backuply_restore_log.php' : $backup_log_name;
 	$log_file = BACKUPLY_BACKUP_DIR . $log_fname;
@@ -656,7 +656,7 @@ function backuply_save_excludes() {
 	}
 	$this_type[$key] = $pattern;
 
-	update_option('backuply_excludes', $backuply['excludes']);
+	update_option('backuply_excludes', $backuply['excludes'], false);
 	
 	wp_send_json(array('success' => true, 'key' => $key));
 	
@@ -683,7 +683,7 @@ function backuply_exclude_rule_delete() {
 	}
 	
 	unset($this_type[$key]);
-	update_option('backuply_excludes', $backuply['excludes']);
+	update_option('backuply_excludes', $backuply['excludes'], false);
 	
 	wp_send_json(array('success' => true));
 }
@@ -875,7 +875,7 @@ function backuply_bcloud_trial(){
 	}
 	
 	if(!defined('BACKUPLY_PRO')){
-		update_option('bcloud_trial_time', time() + 2592000);
+		update_option('bcloud_trial_time', time() + 2592000, false);
 	}
 
 	wp_send_json_success(__('Backuply Cloud has been integrated Successfully, It\'s ready to use now', 'backuply'));
@@ -982,7 +982,7 @@ function backuply_download_bcloud(){
 		wp_send_json_error(esc_html__('File name was not given, so download can not proceed.', 'backuply'));
 	}
 	
-	$filename = sanitize_text_field($_POST['filename']);
+	$filename = backuply_sanitize_filename($_POST['filename']);
 	$bcloud = backuply_load_remote_backup('bcloud');
 	
 	if(empty($bcloud)){
@@ -1051,13 +1051,13 @@ function backuply_backup_upload(){
 	if(!current_user_can('manage_options')){
 		wp_send_json_error('You don\'t have privilege to upload the backup!');
 	}
-	
-	// Were using sanitize_filename here, but it adds _ in some cases so replacing that with optpost in version 1.2.6
-	$file_name = backuply_optpost('file_name'); 
+
+	$file_name = backuply_optpost('file_name');
 	$file_name = backuply_cleanpath($file_name); // Makes sure the file name is safe
+	$file_name = backuply_sanitize_filename($file_name);
 	$backup_dir = backuply_glob('backups');
 	
-	if(strpos($file_name, '.tar.gz') === FALSE){
+	if(!preg_match('/\.tar\.gz$/i', $file_name)){
 		wp_send_json_error(__('You are not uploading a Backup file, please choose the correct backup file', 'backuply'));
 	}
 	
@@ -1105,11 +1105,13 @@ function backuply_backup_upload(){
 	fclose($fh);
 	
 	if($chunk_number === $total_chunks){
-		$mime = mime_content_type($file_loc);
+		if(function_exists('mime_content_type')){
+			$mime = mime_content_type($file_loc);
 		
-		$possible_mime = ['application/gzip', 'application/x-gzip'];
-		if(!in_array($mime, $possible_mime)){
-			wp_send_json_error(__('Upload failed, file type is different than the expected', 'backuply'));
+			$possible_mime = ['application/gzip', 'application/x-gzip'];
+			if(!in_array($mime, $possible_mime)){
+				wp_send_json_error(__('Upload failed, file type is different than the expected', 'backuply'));
+			}
 		}
 		
 		rename($file_loc, $backup_dir . '/' . $file_name);
