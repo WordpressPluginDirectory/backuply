@@ -899,7 +899,7 @@ function backuply_verify_trial(){
 		wp_send_json_error(__('You could not find a license key to verify the confirmation', 'backuply'));
 	}
 
-	$resp = wp_remote_get(BACKUPLY_API.'/license.php?license='.$backuply['license']['license'], array('timeout' => 30));
+	$resp = wp_remote_get(BACKUPLY_API.'/license.php?license='.$backuply['license']['license'].'&url='.rawurlencode(site_url()), array('timeout' => 30));
 	
 	$json = json_decode($resp['body'], true);
 

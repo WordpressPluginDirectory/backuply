@@ -10,7 +10,7 @@ if(!function_exists('add_action')){
 	exit;
 }
 
-define('BACKUPLY_VERSION', '1.3.5');
+define('BACKUPLY_VERSION', '1.3.6');
 define('BACKUPLY_DIR', dirname(BACKUPLY_FILE));
 define('BACKUPLY_URL', plugins_url('', BACKUPLY_FILE));
 define('BACKUPLY_BACKUP_DIR', str_replace('\\' , '/', WP_CONTENT_DIR).'/backuply/');
@@ -42,13 +42,13 @@ function backuply_died() {
 	}
 
 	// To show the memory limit error.
-	if(!empty($last_error['message'] && strpos($last_error['message'], 'Allowed memory size') !== FALSE)){
-		backuply_status_log($last_error['message'], 'error');
+	if(!empty($last_error['message']) && strpos($last_error['message'], 'Allowed memory size') !== FALSE){
+		backuply_status_log($last_error['message'] . ' you can solve this issue by increasing PHP memory limit', 'error');
 	}
 	
 	// To show maximum time out error.
 	if(!empty($last_error['message']) && strpos($last_error['message'], 'Maximum execution time') !== FALSE){
-		backuply_status_log($last_error['message'], 'error');
+		backuply_status_log($last_error['message'] . ' you can solve this issue by increasing PHP max_execution_time', 'error');
 		backuply_kill_process();
 	}
 

@@ -416,14 +416,10 @@ function backuply_get_config() {
 function backuply_status_log($log, $status = 'working', $percentage = 0){
 	$log_file = BACKUPLY_BACKUP_DIR . 'backuply_log.php';
 	
-	$logs = [];
-	
-	$file = file($log_file);
-	
-	if(0 == filesize($log_file)) {
+	if(!file_exists($log_file) || 0 == filesize($log_file)) {
 		$log = "<?php exit();?>\n" . $log; //Prepend php exit
 	}
-	
+
 	$this_log = $log . '|' . $status . '|' . $percentage . "\n";
 	
 	file_put_contents($log_file, $this_log, FILE_APPEND);
@@ -832,7 +828,7 @@ function backuply_license(){
 		return;
 	}
 
-	$resp = wp_remote_get(BACKUPLY_API.'/license.php?license='.$license.'&url='.rawurlencode(esc_url_raw(home_url())), array('timeout' => 30, 'sslverify' => false));
+	$resp = wp_remote_get(BACKUPLY_API.'/license.php?license='.$license.'&url='.rawurlencode(esc_url_raw(site_url())), array('timeout' => 30, 'sslverify' => false));
 
 	if(is_array($resp)){
 		$json = json_decode($resp['body'], true);
@@ -871,7 +867,7 @@ function backuply_load_license(){
 	// Update license details as well
 	if(!empty($backuply['license']) && !empty($backuply['license']['license']) && (time() - @$backuply['license']['last_update']) >= 86400){
 		
-		$resp = wp_remote_get(BACKUPLY_API.'/license.php?license='.$backuply['license']['license']);
+		$resp = wp_remote_get(BACKUPLY_API.'/license.php?license='.$backuply['license']['license'].'&url='.rawurlencode(site_url()));
 
 		//Did we get a response ?
 		if(is_array($resp)){
@@ -884,7 +880,21 @@ function backuply_load_license(){
 				update_option('backuply_license', $tosave);
 			}
 		}
-	}	
+	}
+	
+	// If the license is Free or Expired check for Softaculous Pro license
+	if(empty($backuply['license']) || empty($backuply['license']['active'])){
+		
+		if(function_exists('softaculous_pro_load_license')){
+			$softaculous_license = softaculous_pro_load_license();
+			if(!empty($softaculous_license['license']) && 
+				(!empty($softaculous_license['active']) || empty($backuply['license']['license']))
+			){
+				$backuply['license'] = $softaculous_license;
+			}
+		}
+	}
+	
 }
 
 // Prevent pro activate text for installer

@@ -4,7 +4,7 @@ Tags: backup, restore, database backup, cloud backup, wordpress backup, migratio
 Requires at least: 4.7
 Tested up to: 6.6
 Requires PHP: 5.5
-Stable tag: 1.3.5
+Stable tag: 1.3.6
 License: LGPL v2.1
 License URI: http://www.gnu.org/licenses/lgpl-2.1.html
 
@@ -84,6 +84,10 @@ Go To your WordPress install -> Plugins -> Add New Button -> In Search Box searc
 7. **Backup Process** easy to understand backup progress.
 
 == Changelog ==
+
+= 1.3.6 (September 24th 2024) =
+* [Improvement] Error reporting has been improved.
+* [Task] Improved license handling.
 
 = 1.3.5 (September 13th 2024) =
 * [Security-Fix] A security issue reported by bart[WordFence], has been fixed.

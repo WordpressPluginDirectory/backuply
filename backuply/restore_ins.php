@@ -34,20 +34,23 @@ use Curl\Curl;
 
 function backuply_died() {
 	$last_error = error_get_last();
-		
+
 	if(!$last_error){
 		return false;
 	}
-	
-	backuply_log(serialize($last_error));
 	
 	if(!empty($last_error['type']) && ($last_error['type'] === E_ERROR || $last_error['type'] === E_PARSE)){
 		backuply_log($last_error['message'], true);
 	}
 
+	// To show the memory limit error.
+	if(strpos($last_error['message'], 'Allowed memory size') !== FALSE){
+		backuply_status_log($last_error['message'] . 'you can solve this issue by increasing PHP memory_limit', 'error');
+	}
+
 	if(strpos($last_error['message'], 'Maximum execution time') !== FALSE){
 		//backuply_log('Didnt Come inside max execution');
-		backuply_status_log('The Restore Failed because the script reached Maximum Execution waiting for response from remote server', 'error');
+		backuply_status_log('Your server reached PHP maximum execution time, to solve this issue you can increase PHP max_execution_time', 'error');
 		backuply_kill_process();
 	}
 }
@@ -2780,13 +2783,10 @@ function backuply_print($array){
 function backuply_status_log($log, $status = 'working', $percentage = 0 ){
 	$log_file = dirname(__FILE__, 3).'/backuply/backuply_log.php';
 		
-	$logs = [];
-	
-	$file = file($log_file);
-	if(0 == filesize($log_file)) {
-		$log = "<?php exit();?>\n" . $log; // Prepend php exit
+	if(!file_exists($log_file) || 0 == filesize($log_file)) {
+		$log = "<?php exit();?>\n" . $log; //Prepend php exit
 	}
-	
+
 	$this_log = $log . '|' . $status . '|' . $percentage . "\n";
 	
 	file_put_contents($log_file, $this_log, FILE_APPEND);
