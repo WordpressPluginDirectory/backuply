@@ -854,11 +854,20 @@ function backuply_license(){
 }
 
 // Load license data
-function backuply_load_license(){
+if(!function_exists('backuply_load_license')){
+function backuply_load_license($parent = 0){
 	global $backuply;
 	
 	// Load license
-	$backuply['license'] = get_option('backuply_license', []);
+	if(!empty($parent)){
+		$license_field = 'softaculous_pro_license';
+		$license_api_url = 'https://a.softaculous.com/softwp/';
+	}else{
+		$license_field = 'backuply_license';
+		$license_api_url = BACKUPLY_API;
+	}
+	
+	$backuply['license'] = get_option($license_field, []);
 
 	if(empty($backuply['license']['last_update'])){
 		$backuply['license']['last_update'] = time() - 86600;
@@ -867,7 +876,7 @@ function backuply_load_license(){
 	// Update license details as well
 	if(!empty($backuply['license']) && !empty($backuply['license']['license']) && (time() - @$backuply['license']['last_update']) >= 86400){
 		
-		$resp = wp_remote_get(BACKUPLY_API.'/license.php?license='.$backuply['license']['license'].'&url='.rawurlencode(site_url()));
+		$resp = wp_remote_get($license_api_url.'/license.php?license='.$backuply['license']['license'].'&url='.rawurlencode(site_url()));
 
 		//Did we get a response ?
 		if(is_array($resp)){
@@ -877,7 +886,7 @@ function backuply_load_license(){
 			//Is it the license ?
 			if(!empty($tosave['license'])){
 				$tosave['last_update'] = time();
-				update_option('backuply_license', $tosave);
+				update_option($license_field, $tosave);
 			}
 		}
 	}
@@ -892,9 +901,15 @@ function backuply_load_license(){
 			){
 				$backuply['license'] = $softaculous_license;
 			}
+		}elseif(empty($parent)){
+			$backuply['license'] = get_option('softaculous_pro_license', []);
+			
+			if(!empty($backuply['license'])){
+				backuply_load_license(1);
+			}
 		}
 	}
-	
+}
 }
 
 // Prevent pro activate text for installer

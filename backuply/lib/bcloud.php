@@ -2875,6 +2875,7 @@ class bcloud extends S3 {
 	public $filename = '';
 	public $filesize = 0;
 	public $url = [];
+	public $retry = 0;
 	public $context; // This is used by stream wrapper, so we are not required to touch it
 
 	public function url_stat($path) {
@@ -3067,7 +3068,7 @@ class bcloud extends S3 {
 		if(empty($body['data'])){
 			$error[] = __('Failed to generate Backuply Cloud Keys', 'backuply');
 		}
-		
+
 		$bcloud_keys = $body['data'];
 
 		return true;
@@ -3089,11 +3090,20 @@ class bcloud extends S3 {
 	// Uploads File to Backuply Cloud in Multi Parts
 	public function upload_append($url, $data, $file_size) {
 		global $error, $backuply;
-		
+
 		$etags = isset($backuply['status']['proto']['etags']) ? $backuply['status']['proto']['etags'] : [];
 		$etag = self::uploadPart($this->url['host'], $this->url['path'], $this->upload_url, $data, $this->part_no);
-		
+
 		if(!$etag){
+			if($this->retry < 3){
+				sleep(1);
+				$this->retry = $this->retry + 1;
+				backuply_log('Retrying Upload Part ' . $this->retry);
+				$error = []; // We need to clean any error or else it will cause issue with uploads
+				$did_upload = self::upload_append($url, $data, $file_size);
+				return $did_upload;
+			}
+
 			$error[] = sprintf(__('ETAG wasn\'t returend from %s server', 'backuply'), $this->product_name);
 			return false;
 		}
