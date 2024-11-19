@@ -19,6 +19,7 @@ if(isset($_GET['action'])  && $_GET['action'] == 'backuply_custom_cron'){
 }
 
 // Adds a Wp-Cron for autobackup
+if(!function_exists('backuply_add_auto_backup_schedule')){
 function backuply_add_auto_backup_schedule($schedule = '') {
 	global $backuply;
 
@@ -30,8 +31,10 @@ function backuply_add_auto_backup_schedule($schedule = '') {
 		wp_schedule_event(time(), $schedule, 'backuply_auto_backup_cron');
 	}
 }
+}
 
 // Initiates auto backup
+if(!function_exists('backuply_auto_backup_execute')){
 function backuply_auto_backup_execute(){
 	global $backuply;
 
@@ -54,8 +57,10 @@ function backuply_auto_backup_execute(){
 		backuply_backup_execute();
 	}
 }
+}
 
 // Rotate the backups
+if(!function_exists('backuply_backup_rotation')){
 function backuply_backup_rotation() {
 	global $backuply;
 
@@ -88,6 +93,7 @@ function backuply_backup_rotation() {
 			}
 		}
 	}
+}
 }
 
 function backuply_bcloud_oldest_backup($a, $b) {

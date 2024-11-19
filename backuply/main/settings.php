@@ -1873,7 +1873,7 @@ if(file_exists(BACKUPLY_BACKUP_DIR . 'restoration/restoration.php')){
 								<input type="checkbox" name="backuply_selected_bak[]" value="'.esc_attr($all_info->name .'.'. $all_info->ext).'"/>
 							</td>
 							<td>
-								<div style="position:relative;" title="URL where the Backup was created '.(!empty($all_info->backup_site_url) ? esc_url($all_info->backup_site_url) : '').'">'.date('jS F Y h:i A', esc_html($all_info->btime));
+								<div style="position:relative;" title="URL where the Backup was created '.(!empty($all_info->backup_site_url) ? esc_url($all_info->backup_site_url) : '').'">'.date('jS F Y h:i A', (int) esc_html($all_info->btime));
 
 						if(!empty($all_info->auto_backup)){
 							echo ' <span class="backuply-auto-mark">Auto</span>';

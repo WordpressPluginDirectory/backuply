@@ -10,7 +10,7 @@ if(!function_exists('add_action')){
 	exit;
 }
 
-define('BACKUPLY_VERSION', '1.3.7');
+define('BACKUPLY_VERSION', '1.3.9');
 define('BACKUPLY_DIR', dirname(BACKUPLY_FILE));
 define('BACKUPLY_URL', plugins_url('', BACKUPLY_FILE));
 define('BACKUPLY_BACKUP_DIR', str_replace('\\' , '/', WP_CONTENT_DIR).'/backuply/');
@@ -83,11 +83,18 @@ function backuply_load_plugin(){
 	global $backuply;
 	
 	// Set the array
-	$backuply = array();
+	if(empty($backuply)){
+		$backuply = array();
+	}
+
 	$backuply['settings'] = get_option('backuply_settings', []);
 	$backuply['cron'] = get_option('backuply_cron_settings', []);
 	$backuply['auto_backup'] = false;
-	$backuply['license'] = get_option('backuply_license', []);
+
+	if(!defined('BACKUPLY_PRO')){
+		$backuply['license'] = get_option('backuply_license', []);
+	}
+
 	$backuply['status'] = get_option('backuply_status');
 	$backuply['excludes'] = get_option('backuply_excludes');
 	$backuply['htaccess_error'] = true;

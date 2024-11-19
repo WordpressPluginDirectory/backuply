@@ -1544,6 +1544,9 @@ function backuply_backup_curl($action) {
 		'blocking' => false,
 		'sslverify' => false,
 		'user-agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+		'headers' => [
+			'Cache-Control' => 'max-age=0, no-cache',
+		]
 	);
 
 	if(!empty($_COOKIE[LOGGED_IN_COOKIE])){
