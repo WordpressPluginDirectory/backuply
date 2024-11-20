@@ -6,6 +6,57 @@ if(!defined('ABSPATH')) {
 
 include_once BACKUPLY_DIR . '/main/settings.php';
 
+// Handles submission of license
+function backuply_license(){
+	global $backuply, $lic_resp;
+
+	check_admin_referer('backuply_license_form', 'backuply_license_nonce');
+	
+	$license = sanitize_key(backuply_optpost('backuply_license'));
+	
+	if(empty($license)) {
+		add_settings_error('backuply-notice', esc_attr( 'settings_updated' ), esc_html__('The license key was not submitted', 'backuply'), 'error');
+		
+		return;
+	}
+	
+	if(!function_exists('backuply_load_license')){
+	
+		$lic_resp = wp_remote_get(BACKUPLY_API.'/license.php?license='.$license.'&url='.rawurlencode(esc_url_raw(site_url())), array('timeout' => 30, 'sslverify' => false));
+
+	}else{
+		
+		backuply_load_license($license);
+		
+	}
+
+	if(is_array($lic_resp)){
+		$json = json_decode($lic_resp['body'], true);
+	}else{
+		add_settings_error('backuply-notice', esc_attr( 'settings_updated' ), esc_html__('The response was malformed', 'backuply').'<br>'.var_export($lic_resp, true), 'error');
+		return;
+	}
+	
+	// Save the License
+	if(empty($json['license'])){
+		add_settings_error('backuply-notice', esc_attr( 'settings_updated' ), esc_html__('The license key is invalid', 'backuply'), 'error');
+		
+		return;
+	}
+	
+	if(!function_exists('backuply_load_license')){
+		
+		if(get_option('backuply_license')) {
+			update_option('backuply_license', $json);
+		} else{
+			add_option('backuply_license', $json);
+		}
+		
+		$backuply['license'] = $json;
+		
+	}
+}
+
 
 function backuply_license_page() {
 	global $backuply;
