@@ -1271,6 +1271,7 @@ function backuply_update_status(){
 
 	$backuply['status']['name'] = $data['name'];
 	$backuply['status']['last_file'] = !empty($GLOBALS['end_file']) ? $GLOBALS['end_file'] : '';
+	$backuply['status']['added_file_count'] = !empty($GLOBALS['added_file_count']) ? $GLOBALS['added_file_count'] : 0;
 	$backuply['status']['backup_db'] = $data['backup_db'];
 	$backuply['status']['backup_dir'] = $data['backup_dir'];
 	$backuply['status']['successfile'] = isset($GLOBALS['successfile']) ? $GLOBALS['successfile'] : '';
@@ -1442,6 +1443,7 @@ Backuply';
 			//backuply_log(' mail data : '. var_export($mail, 1));
 		}
 		
+		backuply_status_log('Total files added to the backup are ' . $GLOBALS['added_file_count']);
 		backuply_status_log('Archive created with a file size of '. backuply_format_size($info_data['size']) , 'info', 100);
 		update_option('backuply_last_backup', time(), false);
 		backuply_status_log('Backup Successfully Completed', 'success', 100);
@@ -1479,6 +1481,10 @@ Backuply';
 	
 	if(strpos($txt, 'INCOMPLETE') !== FALSE) {
 		backuply_log('Going to next loop - '.($backuply['status']['loop'] + 1));
+
+		if(file_exists($backuply['zipfile'])){
+			backuply_status_log('Current size of the backup is : '.backuply_format_size(filesize($backuply['zipfile'])), 'adding', 65);
+		}
 		backuply_backup_curl('backuply_curl_backup');
 		die();
 	}
@@ -1796,6 +1802,7 @@ if(!empty($remote_location)){
 
 $path = $data['path'];
 $zipfile = $path.'/.'.$name.'.tar.gz';
+$backuply['zipfile'] = $zipfile;
 $successfile = $path.'/'.$name.'.tar.gz';
 
 $GLOBALS['doing_soft_files'] = 0;
@@ -1803,8 +1810,10 @@ $GLOBALS['doing_soft_files'] = 0;
 $f_list = $pre_soft_list = $post_soft_list = array(); // Files/Folder which has to be added to the tar.gz
 
 // Empty last file everytime as a precaution
+$GLOBALS['added_file_count'] = !empty($backuply['status']['added_file_count']) ? $backuply['status']['added_file_count'] : '';
 $GLOBALS['last_file'] = '';
 $GLOBALS['last_file'] = !empty($backuply['status']['last_file']) ? $backuply['status']['last_file'] : '';
+
 if(!empty($GLOBALS['last_file'])){
 	$GLOBALS['last_file'] = rawurldecode($GLOBALS['last_file']);
 	
@@ -1891,6 +1900,7 @@ if(!empty($data['backup_db']) && !empty($data['softdb']) && empty($backuply['sta
 	}
 	
 	$backuply['status']['backup_db_done'] = 1;
+	backuply_status_log('Creation of SQL dump completed', 'working', 24);
 }
 
 //Backup the DIRECTORY
@@ -1979,9 +1989,14 @@ if(empty($GLOBALS['error']) && (!empty($f_list) || !empty($post_soft_list) || !e
 	$GLOBALS['start'] = 0;
 	$GLOBALS['end_file'] = '';
 	$GLOBALS['pre_soft_list'] = $pre_soft_list;
-	
+
 	backuply_backup_stop_checkpoint();
-	backuply_status_log('Starting to create archive', 'info', 60);
+	
+	if(empty($backuply['status']['loop'])){
+		backuply_status_log('Starting to create archive', 'info', 60);
+	} else {
+		backuply_status_log('Adding to the archive', 'info', 60);
+	}
 	if(!backuply_tar_archive($zipfile, $f_list, true)){
 		backuply_clean($data);
 		

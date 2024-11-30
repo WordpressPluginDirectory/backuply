@@ -941,12 +941,12 @@ class backuply_tar{
 
 		$v_stored_filename = $this->_pathReduction($v_stored_filename);
 		
-		backuply_backup_stop_checkpoint();
-		
-		// mt_rand to reduce the number of folder in log
-		if(is_dir($p_filename) && mt_rand(0,1)) {
-			backuply_status_log('Adding (L'.$backuply['status']['loop'].') : ' . $p_filename, 'adding', 65);
+		// Log folder path if we are backing up files from these directories
+		if(is_dir($p_filename) && preg_match('/(wp-content|wp-admin|wp-includes|wp-content\/plugins|wp-content\/themes)$/s', $p_filename)){
+			backuply_status_log('Adding files from directory (L'.$backuply['status']['loop'].') : ' . $p_filename, 'adding', 65);
 		}
+		
+		backuply_backup_stop_checkpoint();
 		
 		if ($this->_isArchive($p_filename)) {
 			if (($v_file = @fopen($p_filename, 'rb')) == 0) {
@@ -978,9 +978,17 @@ class backuply_tar{
 			}
 		}
 		
+		$GLOBALS['added_file_count'] = intval($GLOBALS['added_file_count']) + 1; // Increasing the file count after it gets added.
+
+		if($GLOBALS['added_file_count']%500 === 0){
+			backuply_status_log('(L'.$backuply['status']['loop'].') : '.$GLOBALS['added_file_count'] . ' files have been added to the backup', 'adding', 65);
+		}
+		
 		// We can run the scripts for the end time already set
 		if(time() >= $GLOBALS['end']){
 			$GLOBALS['end_file'] = $p_filename; // set end file so that we know where to start from
+			backuply_status_log('Last file of (L'.$backuply['status']['loop'].') : '. $p_filename, 'adding', 65);
+			backuply_status_log('Files added to Backup till (L'.$backuply['status']['loop'].') : '. $GLOBALS['added_file_count'], 'adding', 65);
 		}
 
 		return true;

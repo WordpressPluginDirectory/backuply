@@ -429,7 +429,7 @@ function backuply_check_expires(){
 		<a class="backuply_promo-close" href="javascript:" aria-label="Dismiss this Notice">
 			<span class="dashicons dashicons-dismiss"></span> '.esc_html__('Dismiss for 60 days', 'backuply').'
 		</a>
-		<p>' . sprintf(esc_html__('Alert : Your license will expire in %s. Renew to keep getting updates!', 'backuply'), esc_html($human_time)).'
+		<p>' . sprintf(esc_html__('Alert : Your Backuply license will expire in %s. Renew to keep getting updates!', 'backuply'), esc_html($human_time)).'
 		<a href="' . esc_url($backuply_renew_url) . '" target="_blank">' . esc_html__('Click here to renew', 'backuply') . '</a>
 		</p>
 		</div>';
@@ -439,7 +439,7 @@ function backuply_check_expires(){
 		<a class="backuply_promo-close" href="javascript:" aria-label="Dismiss this Notice">
 			<span class="dashicons dashicons-dismiss"></span> '.esc_html__('Dismiss for 60 days', 'backuply').'
 		</a>
-		<p>' . esc_html__('Alert: Your license has expired. Please renew immediately to keep getting updates ', 'backuply').'
+		<p>' . esc_html__('Alert: Your Backuply license has expired. Please renew immediately to keep getting updates ', 'backuply').'
 		<a href="' . esc_url($backuply_renew_url) . '" target="_blank">' . esc_html__('Click here to renew', 'backuply') . '</a></p>
 		</div>';
 	}

@@ -35,6 +35,11 @@
 * @version 0.5.1
 */
 
+/*
+* For the methods: uploadPart(), completeMultipartUpload(), abortMultipartUpload(), and initiateMultipartUpload() :
+* Copyright (c) 2012–2022, David Anderson (https://david.dw-perspective.org.uk). All rights reserved.
+*/
+
 define('BACKUPLY_AWS_CHUNK_SIZE', 5242880); //5MB
 define('BACKUPLY_AWS_CHUNK_COUNT_LIMIT', 10000); //10k Chunk Limit
 

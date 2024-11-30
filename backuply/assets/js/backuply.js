@@ -1014,6 +1014,7 @@ function backuply_backup_progress() {
 			backuply_status.last_status += res.progress_log.length;
 
 			res.progress_log = res.progress_log.split('\n');
+			let html = '';
 			
 			for(let text of res.progress_log) {
 				if(!text){
@@ -1084,7 +1085,7 @@ function backuply_backup_progress() {
 					}
 					status_box.append(log);
 				} else {
-					let html = '<p'+ (color ? ' style="color:'+color+'"' : '')+ '>';
+					html += '<p'+ (color ? ' style="color:'+color+'"' : '')+ '>';
 					
 					if(status == 'success') {
 						// This is to show a link to rate plugin only if the restore has been success.
@@ -1094,14 +1095,11 @@ function backuply_backup_progress() {
 
 						html += '<span class="dashicons dashicons-saved"></span>';
 					}
-					
+
 					html += log;
 					html += '</p>';
-					
-					status_box.append(html);
+
 				}
-				
-				status_box.scrollTop(status_box[0].scrollHeight); //Keeps the Scroll at bottom
 				
 				// Toggeling State of buttons on success and error
 				if(status == 'success' || status == 'error' || res.progress == '100') {
@@ -1123,6 +1121,11 @@ function backuply_backup_progress() {
 					backuply_status.has_ended = true;
 					backuply_obj.process_ended = true;
 				}
+			}
+			
+			if(html){
+				status_box.append(html);
+				status_box.scrollTop(status_box[0].scrollHeight); //Keeps the Scroll at bottom
 			}
 			
 			if(!backuply_status.has_ended){
