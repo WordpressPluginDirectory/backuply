@@ -1757,6 +1757,7 @@ function backuply_schedule_quota_updation($location){
 
 // Checks every day if there is any file inside tmp or a backup with dot(.) at start
 // and have not been updated since last 24 hours, then delete them.
+// And also deletes any softperms, softsql residue left
 function backuply_delete_tmp(){
 
 	$backup_folder = backuply_glob('backups');
@@ -1805,6 +1806,21 @@ function backuply_delete_tmp(){
 			}
 		}
 	}
+	
+	// Deletes any restore residue
+	if(!file_exists(BACKUPLY_BACKUP_DIR .'/restoration/restoration.php')){
+		if(file_exists(ABSPATH .'/softperms.txt')){
+			unlink(ABSPATH .'/softperms.txt');
+		}
+
+		if(file_exists(ABSPATH .'/softsql.sql')){
+			unlink(ABSPATH .'/softsql.sql');
+		}
+
+		if(file_exists(ABSPATH .'/softver.txt')){
+			unlink(ABSPATH .'/softver.txt');
+		}
+	}
 }
 
 function backuply_add_mime_types($mimes) {
@@ -1848,9 +1864,16 @@ function backuply_direct_download_file(){
 	if(!file_exists($file_path)){
 		wp_die('File does not exists');
 	}
+	
+	if(ob_get_level()){
+		$ob_levels = min(5, (int) ob_get_level());
+		for($i = 1; $i<= $ob_levels; $i++){
+			@ob_end_clean();
+		}
+	}
 
 	if(ob_get_level()){
-		ob_end_clean();
+		@ob_end_clean();
 	}
 
 	// Get the file size
@@ -1861,6 +1884,10 @@ function backuply_direct_download_file(){
 	header('Content-Disposition: attachment; filename="' . basename($filename) . '"');
 	header('Content-Transfer-Encoding: binary');
 	header('Content-Length: ' . $file_size);
+	header('Last-Modified: ' . gmdate('D, d M Y H:i:s T', filemtime($file_path)));
+	header('Expires: 0');
+	header('Cache-Control: public, must-revalidate, max-age=0');
+	header('Pragma: no-cache');
 
 	readfile($file_path);
 	die();

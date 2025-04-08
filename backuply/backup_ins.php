@@ -14,15 +14,6 @@ if(!set_time_limit(300)){
 	set_time_limit(60);
 }
 
-$keepalive = 25;
-if(function_exists('ini_get')){
-	$max_execution_time = (int) ini_get('max_execution_time');
-
-	if(!empty($max_execution_time) && $max_execution_time > 180){
-		$keepalive = 60;
-	}
-}
-
 error_reporting(E_ALL);
 ignore_user_abort(true);
 
@@ -1590,6 +1581,14 @@ function backuply_remote_upload($finished = false){
 	$GLOBALS['start_pos'] = $backuply['status']['init_pos'];
 	$backuply['status']['proto_file_size'] = filesize($backuply['status']['successfile']);
 	
+	// This code uses PHP's Stream API, which allows handling various storage mechanisms transparently.
+	// Documentation: https://www.php.net/manual/en/class.streamwrapper.php
+	//
+	// The fopen() function internally calls stream_open(), which is implemented by the specific stream wrapper
+	// associated with the given file path. For eg: if you are using OneDrive, check /lib/onedrive.php for its implementation.
+	//
+	// Similarly, other file functions like fwrite(), fread(), etc., have corresponding stream functions.
+	// You can refer to the provided link for details on how they work.
 	$remote_fp = fopen($backuply['status']['remote_file_path'], 'ab');
 
 	if($remote_fp == false){
@@ -1780,7 +1779,7 @@ backuply_backup_stop_checkpoint();
 
 // We need to stop execution in 25 secs.. We will be called again if the process is incomplete
 // Set default value
-//$keepalive = 25;
+$keepalive = 25;
 $GLOBALS['end'] = (int) time() + $keepalive;
 
 $name = $data['name'];
