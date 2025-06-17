@@ -3262,7 +3262,7 @@ $data['debug_mode'] = backuply_optPOST('debug_mode');
 $data['sess_key'] = backuply_optPOST('sess_key');
 $data['user_id'] = backuply_optPOST('user_id');
 $data['part_no'] = backuply_optPOST('part_no');
-$data['file_randomness'] = !empty(backuply_optPOST('file_randomness')) ? backuply_optPOST('file_randomness') : bin2hex(random_bytes(12));
+$data['file_randomness'] = !empty(backuply_optPOST('file_randomness')) ? backuply_optPOST('file_randomness') : bin2hex(random_bytes(12)); // This is for restoring db and soft perms safely
 $GLOBALS['backuply_version'] = backuply_optPOST('backuply_version');
 
 // Adding randomness to sql file name.
@@ -3453,6 +3453,8 @@ if(!empty($data['restore_db']) && $GLOBALS['current_status'] < 2){
 	$__conn = @backuply_mysql_connect($data['softdbhost'], $dbuser, $dbpass, true);
 	
 	backuply_mysql_query('SET CHARACTER SET utf8mb4', $__conn);
+	backuply_mysql_query('SET NAMES utf8mb4', $__conn);
+
 	backuply_set_sql_mode(array(), $__conn);
 	
 	//CHECK Errors and SELECT DATABASE

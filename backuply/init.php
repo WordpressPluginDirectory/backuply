@@ -10,7 +10,7 @@ if(!function_exists('add_action')){
 	exit;
 }
 
-define('BACKUPLY_VERSION', '1.4.4');
+define('BACKUPLY_VERSION', '1.4.6');
 define('BACKUPLY_DIR', dirname(BACKUPLY_FILE));
 define('BACKUPLY_URL', plugins_url('', BACKUPLY_FILE));
 define('BACKUPLY_BACKUP_DIR', str_replace('\\' , '/', WP_CONTENT_DIR).'/backuply/');
@@ -74,6 +74,7 @@ function backuply_activation(){
 	backuply_add_index_files();
 	backuply_set_config();
 	backuply_set_status_key();
+	backuply_add_litespeed_noabort();
 }
 
 // The function that will be called when the plugin is loaded
@@ -272,6 +273,8 @@ function backuply_load_plugin(){
 				add_action('admin_notices', 'backuply_license_renew');
 			}
 		}
+
+		add_action('admin_init', 'backuply_admin_init');
 	}
 
 	// Cron for Backing Up Files/Database
@@ -370,6 +373,7 @@ function backuply_admin_menu(){
 // Backuply - Backup Page
 function backuply_settings_page_handle(){
 	include_once BACKUPLY_DIR . '/main/settings.php';
+
 	backuply_page_backup();
 	backuply_page_theme();
 }
@@ -536,6 +540,28 @@ function backuply_offer_handler(){
 	backuply_regular_offer();
 }
 
+function backuply_admin_init(){
+
+	if(!isset($_GET['page']) || $_GET['page'] !== 'backuply'){
+		return;
+	}
+
+	$litespeed_time = get_option('backuply_litespeed_notice', time());
+	if(extension_loaded('litespeed') && $litespeed_time <= time()){
+		if(!file_exists(ABSPATH .'.htaccess') || !preg_match('/noabort/i', file_get_contents(ABSPATH .'.htaccess'))){
+			add_action('admin_notices', 'backuply_litespeed_handler');
+		}
+	}
+}
+
+function backuply_litespeed_handler(){
+	if(!function_exists('backuply_litespeed_notice')){
+		include_once(BACKUPLY_DIR.'/main/promo.php');
+	}
+	
+	backuply_litespeed_notice();
+}
+
 
 // Sorry to see you going
 register_uninstall_hook(BACKUPLY_FILE, 'backuply_deactivation');
@@ -561,4 +587,8 @@ function backuply_deactivation(){
 	delete_option('backuply_offer_time');	
 	delete_option('backuply_backup_nag');
 	delete_option('backuply_config_keys');
+	
+	// Cleaning all the cron events
+	wp_clear_scheduled_hook('backuply_clean_tmp');
+	wp_clear_scheduled_hook('backuply_timeout_check');
 }

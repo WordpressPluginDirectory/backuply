@@ -37,7 +37,7 @@ function backuply_page_header($title = 'Settings') {
 	if(defined('BACKUPLY_PRO')){
 		backuply_load_license();
 	}
-	
+
 	// Updating the Timezone to match the time of the users WordPress timezone
 	$time_zone_string = wp_timezone_string();
 	
@@ -162,7 +162,7 @@ background: linear-gradient(61deg, rgba(56,120,255,1) 0%, rgba(98,178,255,1) 100
 function backuply_page_backup(){
 	
 	global $wpdb, $error, $backuply, $success, $protocols, $bcloud_keys;
-	
+
 	$protocols = backuply_get_protocols();
 	
 	// Get the current Users Information
@@ -713,7 +713,7 @@ function backuply_page_backup(){
 						$error[] = __('Failed to generate Google Drive Access Token', 'backuply');
 					}
 				}
-				
+
 				$full_backup_loc = $protocol.'://'.rawurlencode($gdrive_refresh_token).'/'.$gdrive->app_dir.$backup_loc;
 				$gdrive->create_gdrive_app_dir($gdrive_refresh_token);
 				
@@ -2006,6 +2006,41 @@ if(file_exists(BACKUPLY_BACKUP_DIR . 'restoration/restoration.php')){
 		<div class="backuply-settings-block">
 			You can contact the Backuply Team via email. Our email address is <a href="mailto:support@backuply.com">support@backuply.com</a> or through Our <a href="https://softaculous.deskuss.com/open.php?topicId=17" target="_blank">Support Ticket System</a>
 			<p>You can also check the docs <a href="https://backuply.com/docs/" target="_blank">https://backuply.com/docs/</a> to review some common issues. You might find something helpful there.</p>
+			
+			<h3><?php esc_html_e('Environment Info', 'backuply');?></h3>
+			<table class="widefat striped">
+				<tbody>
+					<tr>
+						<td>WP_MEMORY_LIMIT</td>
+						<td><?php echo(defined('WP_MEMORY_LIMIT') ? WP_MEMORY_LIMIT : '-');?></td>
+					</tr>
+					
+					<tr>
+						<td>WP_MAX_MEMORY_LIMIT</td>
+						<td><?php echo(defined('WP_MAX_MEMORY_LIMIT') ? WP_MAX_MEMORY_LIMIT : '-');?></td>
+					</tr>
+					<?php
+					if(function_exists('ini_get')){ ?>
+					
+					<tr>
+						<td><?php esc_html_e('PHP memory limit', 'backuply');?></td>
+						<td><?php echo ini_get('memory_limit');?></td>
+					</tr>
+					
+					<tr>
+						<td><?php esc_html_e('PHP time limit', 'backuply');?></td>
+						<td><?php echo ini_get('max_execution_time');?></td>
+					</tr>
+					<tr>
+						<td><?php esc_html_e('PHP post max size', 'backuply');?></td>
+						<td><?php echo ini_get('post_max_size');?></td>
+					<?php } ?>
+					<tr>
+						<td>Server</td>
+						<td><?php echo(isset($_SERVER['SERVER_SOFTWARE']) ? esc_html($_SERVER['SERVER_SOFTWARE']) : __('Unknown server', 'backuply'));?></td>
+					</tr>
+				</tbody>
+			</table>
 		</div>
 	</div>
 	<?php 
@@ -2274,7 +2309,7 @@ if(file_exists(BACKUPLY_BACKUP_DIR . 'restoration/restoration.php')){
 					<li>Go to the your Wordpress Install.</li>
 					<li>Go in wp-content folder and you will find a folder named <strong>backuply</strong> inside it.</li>
 					<li>In backuply folder create a <strong>index.html</strong> file and in it paste the text given below and save it</li>
-					<li>There would be more folders inside backuply folder like backups-randomstring and backups_info-randomstring, so do the same as above inside those folders too.
+					<li>There would be more folders inside backuply folder like backups-randomstring and backups_info-randomstring, so do the same as above inside those folders too.</li>
 					<li>Or you can contact backuply at support@backuply.com we will help you out</li>
 				</ul>
 				<div class="backuply-code-text-wrap">
