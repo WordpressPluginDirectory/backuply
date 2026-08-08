@@ -14,26 +14,6 @@ if(!defined('ABSPATH')) {
 function backuply_page_header($title = 'Settings') {
 	global $backuply;
 	
-	wp_enqueue_style('backuply-styles', BACKUPLY_URL . '/assets/css/styles.css', array(), BACKUPLY_VERSION);
-	
-	// TODO:: Is only being used for a modal so create custom modal.
-	wp_enqueue_style('backuply-jquery-ui', BACKUPLY_URL . '/assets/css/base-jquery-ui.css', array(), BACKUPLY_VERSION);
-	wp_enqueue_style('backuply-jstree', BACKUPLY_URL . '/assets/css/jstree.css', array(), BACKUPLY_VERSION);
-
-	wp_enqueue_script('backuply-js', BACKUPLY_URL . '/assets/js/backuply.js', array('jquery-ui-dialog'), BACKUPLY_VERSION, true);
-	wp_enqueue_script('backuply-jstree', BACKUPLY_URL . '/assets/js/jstree.min.js', array('jquery'), BACKUPLY_VERSION, true);
-	
-	wp_localize_script('backuply-js', 'backuply_obj', array(
-		'nonce' => wp_create_nonce('backuply_nonce'),
-		'ajax_url' => admin_url('admin-ajax.php'),
-		'cron_task' => get_option('backuply_cron_settings'),
-		'images' => BACKUPLY_URL . '/assets/images/',
-		'backuply_url' => BACKUPLY_URL,
-		'creating_session' => wp_generate_password(32, false),
-		'status_key' => urlencode(backuply_get_status_key()),
-		'site_url' => site_url(),
-	));
-	
 	if(defined('BACKUPLY_PRO')){
 		backuply_load_license();
 	}
@@ -99,7 +79,11 @@ background: linear-gradient(61deg, rgba(56,120,255,1) 0%, rgba(98,178,255,1) 100
 	</a>
 	
 	<?php
-	if(empty($backuply['bcloud_key'])){
+	// The promo should be only visible to Free versions and SOFTWP license users
+	if(
+		empty($backuply['license']) || 
+		(!empty($backuply['license']['license']) && strpos($backuply['license']['license'], 'BAKLY') !== 0)
+	){
 		echo '<div class="backuply-promotion-content backuply-cloud-banner" style="background-color:#000;">
 			<div class="backuply-cloud-gtext"><div>Backuply</div> <div>Cloud</div></div>
 			<div class="bcloud-banner-content">
@@ -202,7 +186,9 @@ function backuply_page_backup(){
 			return false;
 		}
 		
-		$res = backuply_delete_backup(backuply_optpost('tar_file'));
+		$backup_file = backuply_optpost('tar_file');
+		$backup_file = backuply_sanitize_filename($backup_file);
+		$res = backuply_delete_backup($backup_file);
 		
 		if($res) {
 			$success = __('The backup was deleted successfully.', 'backuply');
@@ -276,6 +262,10 @@ function backuply_page_backup(){
 				$cron_settings['backup_dir'] = isset($_POST['auto_backup_dir']) ? 1 : 0;
 				$cron_settings['backup_db'] = isset($_POST['auto_backup_db']) ? 1 : 0;
 				$cron_settings['backup_rotation'] = backuply_optpost('backup_rotation');
+				if($cron_settings['backup_rotation'] === 'custom'){
+					$custom_val = (int) backuply_optpost('backup_rotation_custom');
+					$cron_settings['backup_rotation'] = (!empty($custom_val) && $custom_val > 0) ? $custom_val : '';
+				}
 				$cron_settings['backup_location'] = backuply_optpost('backup_location');
 
 				if($_POST['backuply_cron_schedule'] == 'custom') {
@@ -303,7 +293,7 @@ function backuply_page_backup(){
 			$backuply['settings']['backup_dir'] = !empty($_POST['backup_dir']) ? 1 : 0;
 			$backuply['settings']['backup_db'] = !empty($_POST['backup_db']) ? 1 : 0;
 			$backuply['settings']['backup_location'] = !empty($_POST['backup_location']) ? backuply_optpost('backup_location') : '';
-			
+			$backuply['settings']['pre_update_backup'] = !empty($_POST['pre_update_backup']) ? 1 : 0;
 			update_option('backuply_settings', $backuply['settings']);
 			
 			if(!empty($error)){
@@ -329,7 +319,7 @@ function backuply_page_backup(){
 
 	$del_loc_id = backuply_optreq('del_loc_id');
 	$edit_loc_id = backuply_optreq('edit_loc_id');
-	$backuply_remote_backup_locs = get_option('backuply_remote_backup_locs');
+	$backuply_remote_backup_locs = get_option('backuply_remote_backup_locs', []);
 
 	// Handle backup location delete request
 	if(isset($_REQUEST['backuply_delete_location']) && array_key_exists($del_loc_id, $backuply_remote_backup_locs)){
@@ -423,6 +413,7 @@ function backuply_page_backup(){
 				}
 
 			}elseif($protocol == 'aws' || $protocol == 'caws'){
+				$aws = backuply_load_remote_backup($protocol);
 				$endpoint = $backuply_remote_backup_locs[$edit_loc_id]['aws_endpoint'];
 				$region = $backuply_remote_backup_locs[$edit_loc_id]['aws_region'];
 				$bucketName = $backuply_remote_backup_locs[$edit_loc_id]['aws_bucketname'];
@@ -621,8 +612,7 @@ function backuply_page_backup(){
 		$remote_backup_locs = (!empty($existing_backup_locs) ? $existing_backup_locs: array());
 		$location_id = (empty($remote_backup_locs) ? 1 : max(array_keys($remote_backup_locs)) + 1);
 
-		$dropbox = backuply_load_remote_backup('dropbox');
-		$proto_arr = ['dropbox', 'gdrive', 'aws', 'caws', 'onedrive', 'bcloud'];
+		$proto_arr = ['dropbox', 'gdrive', 'aws', 'caws', 'onedrive', 'bcloud', 'pcloud'];
 		
 		if(in_array($protocol, $proto_arr)){
 
@@ -773,6 +763,7 @@ function backuply_page_backup(){
 					exit;
 					
 				}else {
+					$dropbox = backuply_load_remote_backup('dropbox');
 					$dropbox_tokens = $dropbox->generate_dropbox_token($access_code);
 					$dropbox_access_token = $dropbox_tokens['access_token'];
 					$dropbox_refresh_token = $dropbox_tokens['refresh_token'];
@@ -784,6 +775,62 @@ function backuply_page_backup(){
 					$full_backup_loc = $protocol.'://'.$dropbox_refresh_token.$backup_loc;
 				}
 
+			} elseif ($protocol == 'pcloud'){
+				$access_code = backuply_optget('access_code');
+				$pcloud_host = backuply_optget('host');
+				
+				if(empty($access_code)){
+					$callback_uri = menu_page_url('backuply', false) . '&security='.wp_create_nonce('backuply_nonce');
+					
+					$url = 'https://api.backuply.com/pcloud/token.php?action=add_location&loc_name='.rawurlencode($loc_name).'&backup_loc='.rawurlencode($backup_loc).'&url='.rawurlencode($callback_uri).'&softtoken='.rawurlencode(backuply_csrf_get_token());
+					
+					backuply_redirect($url, false);
+					exit;
+				}else{
+					if(empty($pcloud_host)){
+						$error[] = __('Failed to add pCloud location, didn\'t got pcloud host', 'backuply');
+					}
+				}
+				
+				$pcloud = backuply_load_remote_backup('pcloud');
+				backuply_stream_wrapper_register($protocol, $protocol);
+
+				global $backuply_pcloud_folderid;
+				$backuply_pcloud_folderid = 0;
+				
+				$pcloud_access_token = $pcloud->get_access_token($access_code, $pcloud_host);
+				
+				if(empty($pcloud_access_token)){
+					$error[] = __('Did not got any access key', 'backuply');
+					return false;
+				}
+
+				$full_backup_loc = $protocol.'://'.rawurlencode($pcloud_access_token).'@'.rawurlencode($pcloud_host);
+
+				// Checking an creating the base folder
+				if(!@opendir($full_backup_loc)){
+					if(!@mkdir($full_backup_loc)){
+						$error[] = __('Failed to create a folder', 'backuply');
+					}
+				}
+
+				// Checking and creating the sub folder if Required.
+				if(!empty($backup_loc) && $backup_loc != '/'){
+					$full_backup_loc .= '/'. $backup_loc;
+
+					if(!@opendir($full_backup_loc)){
+						if(!@mkdir($full_backup_loc)){
+							$error[] = __('Failed to create the folder', 'backuply') . $backup_loc;
+						}
+					}
+				}
+
+				// Adding the Folder ID, where we will need to upload the file
+				// The structure of the backup location is
+				// pcloud://access_key@folderid-host/path
+				if(!empty($backuply_pcloud_folderid)){
+					$full_backup_loc = str_replace(rawurlencode($pcloud_host), $backuply_pcloud_folderid .'-'.rawurlencode($pcloud_host), $full_backup_loc);
+				}
 			}
 		}else{
 			// Server Host
@@ -839,7 +886,7 @@ function backuply_page_backup(){
 			}
 		}
 
-		if($protocol != 'dropbox' && $protocol != 'gdrive' && $protocol != 'webdav' && $protocol != 'aws' && $protocol != 'caws' && $protocol != 'onedrive' && $protocol != 'bcloud'){
+		if($protocol != 'dropbox' && $protocol != 'gdrive' && $protocol != 'webdav' && $protocol != 'aws' && $protocol != 'caws' && $protocol != 'onedrive' && $protocol != 'bcloud' && $protocol != 'pcloud'){
 			
 			//Connection established or not?
 			$ftp = backuply_sftp_connect($server_host, $ftp_user, $ftp_pass, $protocol, $port, false);
@@ -934,6 +981,10 @@ function backuply_page_backup(){
 				update_option('bcloud_key', $bcloud_keys['bcloud_key']);
 			}
 			
+		}elseif($protocol == 'pcloud'){
+			$remote_backup_locs[$location_id]['access_code'] = $access_code;
+			$remote_backup_locs[$location_id]['host'] = $pcloud_host;
+			$remote_backup_locs[$location_id]['folder_id'] = $backuply_pcloud_folderid; // TODO: remove if not needed in future.
 		}else{
 			$remote_backup_locs[$location_id]['server_host'] = $server_host;
 			$remote_backup_locs[$location_id]['port'] = $port;
@@ -1068,8 +1119,8 @@ if(file_exists(BACKUPLY_BACKUP_DIR . 'restoration/restoration.php')){
 		$backup_last_log = (file_exists(BACKUPLY_BACKUP_DIR . 'backuply_backup_log.php')) ? ' <span class="backuply-backup-last-log">(Last log)</span>' : '';
 		$restore_last_log = (file_exists(BACKUPLY_BACKUP_DIR . 'backuply_restore_log.php')) ? ' <span class="backuply-restore-last-log">(Last log)</span>' : '';
 		
-		$last_backup = get_option('backuply_last_backup') ? date('jS \of F Y h:i A', get_option('backuply_last_backup')) . $backup_last_log : 'None';
-		$last_restore = get_option('backuply_last_restore') ? date('jS \of F Y h:i A', get_option('backuply_last_restore')) . $restore_last_log : 'None';
+		$last_backup = get_option('backuply_last_backup') ? backuply_format_unix_time(get_option('backuply_last_backup')) . $backup_last_log : 'None';
+		$last_restore = get_option('backuply_last_restore') ? backuply_format_unix_time(get_option('backuply_last_restore')) . $restore_last_log : 'None';
 		$auto_backup_schedule = wp_next_scheduled('backuply_auto_backup_cron') ? date('Y-m-d h:i A', wp_next_scheduled('backuply_auto_backup_cron')) : '';
 		
 		if(!empty($auto_backup_schedule)) {
@@ -1221,6 +1272,9 @@ if(file_exists(BACKUPLY_BACKUP_DIR . 'restoration/restoration.php')){
 
 									if(!empty($v['s3_compatible'])){
 										$logo = esc_attr($v['s3_compatible']).'.svg';
+										if($v['s3_compatible'] == 'custom'){
+										    $logo = 'caws.svg';
+										}
 									}
 
 								?>
@@ -1236,7 +1290,7 @@ if(file_exists(BACKUPLY_BACKUP_DIR . 'restoration/restoration.php')){
 										$class_to_add = 'backuply-update-quota';
 									}
 
-									echo '<div class="backuply-quota '.esc_attr($class_to_add).'" data-storage="'.esc_attr($v['protocol']).'" title="Click to refresh">';
+									echo '<div class="backuply-quota '.esc_attr($class_to_add).'" data-storage="'.esc_attr($k).'" data-protocol="'.esc_attr($v['protocol']).'" title="Click to refresh">';
 
 									if(!empty($v['backup_quota']) || in_array($v['protocol'], ['onedrive', 'dropbox', 'gdrive', 'bcloud'])){
 										echo '<span class="backuply-quota-text">' . (!empty($v['backup_quota']) ? esc_html(size_format($v['backup_quota'])) : '-') . '</span>';
@@ -1266,7 +1320,7 @@ if(file_exists(BACKUPLY_BACKUP_DIR . 'restoration/restoration.php')){
 								<form method="post">
 									<input type="hidden" name="security" value="<?php echo esc_attr($backuply_nonce); ?>"/>
 									<input type="hidden" name="del_loc_id" value="<?php echo esc_attr($k); ?>"/>
-									<input name="backuply_delete_location" class="button button-primary action" onclick="return conf_del('Are you sure you want to delete this backup location ?');" value="<?php esc_html_e('Delete', 'backuply'); ?>"  type="submit" />
+									<input name="backuply_delete_location" class="button backuply-btn--danger button-primary action" onclick="return conf_del('Are you sure you want to delete this backup location ?');" value="<?php esc_html_e('Delete', 'backuply'); ?>"  type="submit" />
 								</form>
 							</td>
 						</tr> <?php
@@ -1372,7 +1426,7 @@ if(file_exists(BACKUPLY_BACKUP_DIR . 'restoration/restoration.php')){
 				
 					<select name="s3_compatible" class="form-control" id="s3_compatible" value="<?php echo esc_attr($protocol); ?>">
 						<?php
-						$s3_comp = array('digitalocean' => 'DigitalOcean Spaces', 'linode' => 'Linode Object Storage', 'vultr' => 'Vultr Object Storage', 'cloudflare' => 'Cloudflare R2', 'wasabi' => 'Wasabi Object Storage');
+						$s3_comp = array('digitalocean' => 'DigitalOcean Spaces', 'linode' => 'Linode Object Storage', 'vultr' => 'Vultr Object Storage', 'cloudflare' => 'Cloudflare R2', 'wasabi' => 'Wasabi Object Storage', 'custom' => 'Custom');
 						
 						foreach($s3_comp as $key => $remote_loc) {
 							$selected = (isset($s3_compatible) && $s3_compatible == $key) ? ' selected' : '';
@@ -1539,6 +1593,20 @@ if(file_exists(BACKUPLY_BACKUP_DIR . 'restoration/restoration.php')){
 								} ?>
 							</select>
 						</div>
+						
+						<?php
+						if(defined('BACKUPLY_PRO')){ ?>
+						
+						<!-- Backup before WordPress updates Checkbox-->
+						<div class="backuply-option-wrap">
+							<label class="backuply-opt-label" for="pre_update_backup">
+								<span class="backuply-opt-label__title"><?php esc_html_e('Backup Before Updates', 'backuply'); ?></span>
+								<input type="checkbox" name="pre_update_backup" id="pre_update_backup" value="1" <?php checked(!empty($backuply['settings']['pre_update_backup']), true); ?> />
+								<span class="backuply-opt-label__helper"><?php esc_html_e('Create a Backup Before manual WordPress Core Updates', 'backuply'); ?></span>
+							</label>
+						</div>
+						
+						<?php } ?>
 					</div>
 				</div>
 				
@@ -1583,22 +1651,35 @@ if(file_exists(BACKUPLY_BACKUP_DIR . 'restoration/restoration.php')){
 							<label class="backuply-opt-label" for="backup_rotation">
 								<span class="backuply-opt-label__title"><?php esc_html_e('Backup Rotation', 'backuply'); ?></span>
 							</label>
-							<select id="backup_rotation" name="backup_rotation" disabled >
-								<option value=""><?php esc_html_e('Unlimited', 'backuply'); ?></option>
-								<?php for($i = 1; $i <= 10; $i++) {
-									
-									$selected = '';
-									
-									if(isset($cron_task['backup_rotation']) && $cron_task['backup_rotation'] == $i) {
-										$selected = 'selected';
-									}
+							<div style="display:flex; gap:3px">
+								<select id="backup_rotation" name="backup_rotation" disabled style="width:100%">
+									<option value=""><?php esc_html_e('Unlimited', 'backuply'); ?></option>
+									<?php for($i = 1; $i <= 10; $i++) {
+										
+										$selected = '';
+										
+										if(isset($cron_task['backup_rotation']) && $cron_task['backup_rotation'] == $i) {
+											$selected = 'selected';
+										}
 
+										?>
+									<option value="<?php echo esc_attr($i);?>" <?php echo esc_attr($selected);?>><?php echo esc_attr($i);?></option>
+									<?php } ?>
+									<?php
+									$custom_selected = '';
+									$custom_val = '';
+									if(!empty($cron_task['backup_rotation']) && $cron_task['backup_rotation'] > 10){
+										$custom_selected = 'selected';
+										$custom_val = $cron_task['backup_rotation'];
+									}
 									?>
-								<option value="<?php echo esc_attr($i);?>" <?php echo esc_attr($selected);?>><?php echo esc_attr($i);?></option>
-								<?php } ?>
-							</select>
+									<option value="custom" <?php echo esc_attr($custom_selected); ?>><?php esc_html_e('Custom', 'backuply'); ?></option>
+								</select>
+								<input type="number" id="backup_rotation_custom" name="backup_rotation_custom" min="1" value="<?php echo esc_attr($custom_val); ?>" style="display:none; width:80px;" placeholder="<?php esc_attr_e('Count', 'backuply'); ?>"/>
+							</div>
+							<span id="backup_rotation_warning" style="display:none; color:#d63638; font-size:12px; margin-left:8px;"><?php esc_html_e('Keeping more than 30 backups may consume significant disk space.', 'backuply'); ?></span>
 						</div>
-	
+
 						<div class="backuply-option-wrap" id="backuply_cron_checkbox">
 							<div class="backuply-opt-label">
 								<span class="backuply-opt-label__title"><?php esc_html_e('Backup options', 'backuply'); ?></span>
@@ -1678,7 +1759,7 @@ if(file_exists(BACKUPLY_BACKUP_DIR . 'restoration/restoration.php')){
 						<div class="backuply-option-wrap">
 							<label class="backuply-opt-label" for="backuply_exclude_files">
 								<span class="backuply-opt-label__title"><span class="dashicons dashicons-category"></span> <?php esc_html_e('Exclude Files/Folders', 'backuply'); ?></span>
-								<span class="backuply-opt-label__helper"><?php esc_html_e('Exclude specific files, or though certain patters', 'backuply'); ?></span>
+								<span class="backuply-opt-label__helper"><?php esc_html_e('Exclude specific files, or through certain patterns', 'backuply'); ?></span>
 								<div class="backuply_exclude_file_block" id="backuply-exclude-file-specific">
 									<div class="backuply_exclude_file_header"><?php esc_html_e('Exclude Specific Folder/Folder', 'backuply'); ?></div>
 									<div class="backuply_exclude_file_list"></div>
@@ -1799,7 +1880,7 @@ if(file_exists(BACKUPLY_BACKUP_DIR . 'restoration/restoration.php')){
 
 					echo '</select>
 					<button class="button button-primary" id="backuply-btn-sync-bak">Sync Backups</button>
-					<button class="button button-primary" id="backuply-btn-upload-bak" style="margin-left:10px;" title="Upload Backup"><span class="dashicons dashicons-upload" style="vertical-align:sub;"></span></button>';
+					<button class="button button-primary" id="backuply-btn-upload-bak" style="margin-left:10px;" title="Upload Backup"><span class="dashicons dashicons-upload" style="vertical-align:sub; color:#fff;"></span></button>';
 					
 					?>
 					</div>
@@ -1814,25 +1895,29 @@ if(file_exists(BACKUPLY_BACKUP_DIR . 'restoration/restoration.php')){
 		</div>
 		<div class="inside">
 			<div class="backuply-settings-block">
-				<table class="table" style="width:100%;">
+				<table class="table" style="width:100%;" id="backuply-history-table">
 					<thead>
 						<tr>
 							<th style="width:3%;text-align:left;">&nbsp;</th>
-							<th style="width:30%;text-align:left;"><?php esc_html_e('Backup Time', 'backuply'); ?></th>
-							<th style="width:15%;text-align:left;"><?php esc_html_e('Backup Location', 'backuply'); ?></th>
-							<th style="width:15%;text-align:left;"><?php esc_html_e('Host', 'backuply'); ?></th>
-							<th style="width:20%;text-align:left;"><?php esc_html_e('File Size', 'backuply'); ?></th>
-							<th style="width:15%;text-align:left;"><?php esc_html_e('Will Restore', 'backuply'); ?></th>
-							<th style="width:15%;text-align:center;"><?php esc_html_e('Restore', 'backuply'); ?></th>
-							<th style="width:15%;text-align:center;"><?php esc_html_e('Delete', 'backuply'); ?></th>
-							<th style="width:15%;text-align:center;"><?php esc_html_e('Download', 'backuply'); ?></th>
+							<th style="width:22%;text-align:left;"><?php esc_html_e('Backup Time', 'backuply'); ?></th>
+							<th style="width:16%;text-align:left;"><?php esc_html_e('Backup Location', 'backuply'); ?></th>
+							<th style="width:10%;text-align:left;"><?php esc_html_e('Host', 'backuply'); ?></th>
+							<th style="width:10%;text-align:left;"><?php esc_html_e('File Size', 'backuply'); ?></th>
+							<th style="width:12%;text-align:left;"><?php esc_html_e('Will Restore', 'backuply'); ?></th>
+							<th style="width:9%;text-align:center;"><?php esc_html_e('Restore', 'backuply'); ?></th>
+							<th style="width:9%;text-align:center;"><?php esc_html_e('Delete', 'backuply'); ?></th>
+							<th style="width:9%;text-align:center;"><?php esc_html_e('Download', 'backuply'); ?></th>
 						</tr>
 					</thead>
 					<tbody>
 					<?php
-					$backup_infos = backuply_get_backups_info();
+					$history_page = !empty($_GET['history_page']) ? (int)$_GET['history_page'] : 0;
+					$backups_per_page = 20;
+					$history_offset = ($history_page - 1)*$backups_per_page;
+					
+					$backup_infos = backuply_get_backups_info_data($history_offset, $backups_per_page);
 
-					foreach($backup_infos as $count => $all_info){
+					foreach($backup_infos['backup_infos'] as $count => $all_info){
 						$backup_loc_name = 'Local';
 						$backup_protocol = 'local';
 						$backup_server_host = '-';
@@ -1867,31 +1952,37 @@ if(file_exists(BACKUPLY_BACKUP_DIR . 'restoration/restoration.php')){
 							}
 
 						}
-						
+
 						echo '
 						<tr data-proto-id="'.esc_attr($proto_id).'">
 							<td>
 								<input type="checkbox" name="backuply_selected_bak[]" value="'.esc_attr($all_info->name .'.'. $all_info->ext).'"/>
 							</td>
 							<td>
-								<div style="position:relative;" title="URL where the Backup was created '.(!empty($all_info->backup_site_url) ? esc_url($all_info->backup_site_url) : '').'">'.date('jS F Y h:i A', (int) esc_html($all_info->btime));
+								<div style="position:relative;" title="URL where the Backup was created '.(!empty($all_info->backup_site_url) ? esc_url($all_info->backup_site_url) : '').'">'.esc_html(backuply_format_unix_time($all_info->btime));
+						
+						echo '<br>';
 
 						if(!empty($all_info->auto_backup)){
 							echo ' <span class="backuply-auto-mark">Auto</span>';
 						}
-						
+
 						echo '<span class="dashicons dashicons-media-text backuply-backup-last-log" title="Logs" style="cursor:pointer; text-decoration:none;" data-file-name="'.esc_attr($all_info->name) . '_log.php"></span>';
-						
+
 						if(!empty($all_info->backup_note)){
 							echo '<span class="backuply-backup-note-tip" title="'.esc_attr($all_info->backup_note).'" style="cursor:pointer; vertical-align:middle;"><svg xmlns="http://www.w3.org/2000/svg" height="16" width="14" viewBox="0 0 448 512" fill="#f9be01"><path d="M64 32C28.7 32 0 60.7 0 96V416c0 35.3 28.7 64 64 64H288V368c0-26.5 21.5-48 48-48H448V96c0-35.3-28.7-64-64-64H64zM448 352H402.7 336c-8.8 0-16 7.2-16 16v66.7V480l32-32 64-64 32-32z"/></svg></span>';
 						}
 
 						echo'</div>
 						</td>';
-							
+
 						$remote_icon = $backup_protocol;
 						if(!empty($s3_compat)){
 							$remote_icon = $s3_compat;
+
+							if($s3_compat == 'custom'){
+								$remote_icon = 'caws';
+							}
 						}
 
 						echo '<td>
@@ -1914,21 +2005,9 @@ if(file_exists(BACKUPLY_BACKUP_DIR . 'restoration/restoration.php')){
 							<td style="text-align:right;">
 					
 								<form id="restoreform_<?php echo esc_attr($count); ?>" data-protocol="<?php echo esc_attr($backup_protocol); ?>" data-bak-name="<?php echo esc_attr($backup_loc_name); ?>">
-						
-									<input type="hidden" name="loc_id" value="<?php echo isset($all_info->backup_location) ? esc_attr($all_info->backup_location) : ''; ?>" />
-									<input type="hidden" name="restore_dir" value="<?php echo esc_attr($all_info->backup_dir); ?>" />
-									<input type="hidden" name="restore_db" value="<?php echo esc_attr($all_info->backup_db); ?>" />
-									<input type="hidden" name="backup_backup_dir" value="<?php echo esc_attr(BACKUPLY_BACKUP_DIR); ?>" />
 									<input type="hidden" name="fname" value="<?php echo esc_attr($all_info->name .'.'. $all_info->ext); ?>" />
-									<input type="hidden" name="softpath" value="<?php echo esc_attr($dir_path); ?>" />
-									<input type="hidden" name="dbexist" value="<?php if($all_info->backup_db != 0){echo 'softsql.sql';} ?>" />
-									<input type="hidden" name="soft_version" value="yes" />
-									<input type="hidden" name="backup_file_loc" value="<?php echo esc_attr($backup_file_loc); ?>" />
-									<input type="hidden" name="size" value="<?php echo esc_attr($all_info->size); ?>" />
-									<input type="hidden" name="backup_site_url" value="<?php echo esc_attr($all_info->backup_site_url); ?>" />
-									<input type="hidden" name="backup_site_path" value="<?php echo esc_attr($all_info->backup_site_path); ?>" />
 									
-									<input name="backuply_restore_submit" class="button button-primary action" value="<?php esc_html_e('Restore', 'backuply'); ?>" onclick="backuply_restorequery('#restoreform_<?php echo esc_attr($count); ?>')" type="submit" />
+									<input name="backuply_restore_submit" class="backuply-restore-btn button button-primary action" value="<?php esc_html_e('Restore', 'backuply'); ?>" onclick="backuply_restorequery('#restoreform_<?php echo esc_attr($count); ?>')" type="submit" />
 							
 								</form>
 							</td>
@@ -1936,13 +2015,13 @@ if(file_exists(BACKUPLY_BACKUP_DIR . 'restoration/restoration.php')){
 								<form method="post">
 									<input type="hidden" name="tar_file" value="<?php echo esc_attr($all_info->name .'.'. $all_info->ext); ?>"/>
 									<input type="hidden" name="security" value="<?php echo esc_attr($backuply_nonce); ?>"/>
-									<input name="backuply_delete_backup" class="button button-primary action" onclick="return conf_del('Are you sure you want to delete the backup file ?');" value="<?php esc_html_e('Delete', 'backuply'); ?>"  type="submit" />
+									<input name="backuply_delete_backup" class="backuply-delete-btn button backuply-btn--danger button-primary action" onclick="return conf_del('Are you sure you want to delete the backup file ?');" value="<?php esc_html_e('Delete', 'backuply'); ?>"  type="submit" />
 								</form>
 							</td>
 							<td style="text-align:center;">
 								<?php if($backup_loc_name == 'Local') {
 									?>
-									<a class="button button-primary" href="<?php echo admin_url('admin-post.php?backup_name='.esc_attr($all_info->name .'.'. $all_info->ext) . '&security='.wp_create_nonce('backuply_download_security').'&action=backuply_download_backup'); ?>" download><?php esc_html_e('Download', 'backuply'); ?></a>
+									<a class="backuply-download-btn button button-primary" href="<?php echo admin_url('admin-post.php?backup_name='.esc_attr($all_info->name .'.'. $all_info->ext) . '&security='.wp_create_nonce('backuply_download_security').'&action=backuply_download_backup'); ?>" download><?php esc_html_e('Download', 'backuply'); ?></a>
 								<?php
 								}else if($backup_loc_name == 'Backuply Cloud'){
 									echo '<button type="button" class="button button-primary backuply-download-bcloud" data-name="'.esc_attr($all_info->name .'.'. $all_info->ext).'">'.esc_html__('Download', 'backuply').'</button>';
@@ -1955,6 +2034,41 @@ if(file_exists(BACKUPLY_BACKUP_DIR . 'restoration/restoration.php')){
 					</tbody>
 				</table>
 			</div>
+			
+			<?php 
+			$page_count = ceil($backup_infos['total_backups']/$backups_per_page);
+			
+			if(!empty($page_count) && $page_count > 1){
+			?>
+			<div class="backuply-tablenav">
+				<div class="backuply-tablenav-pages" id="backuply-pagination">
+					<div class="backuply-total-items">Total Backups: <?php echo esc_html($backup_infos['total_backups']);?></div>
+					<div class="backuply-pagination-controls">
+					<?php
+						if(empty($history_page) || $history_page < 1){
+							$history_page = 1;
+						} else if($history_page > $page_count){
+							$history_page = $page_count;
+						}
+
+						echo '<div class="backuply-pagination-links">
+							<div class="backuply-pagination-links">
+								<a class="button backuply-prev-first-page" '.($history_page  <= 1 ? 'disabled' : 'href="'.esc_url(admin_url('?page=backuply#backuply-history')).'"').'>‹‹</a>
+								
+								<a class="button backuply-prev-page" '.($history_page <= 1 ? 'disabled' : 'href="'.esc_url(admin_url('?page=backuply&history_page='.($history_page-1).'#backuply-history')).'"').'>‹</a>
+								<span class="backuply-pagination-info"> Page '.esc_html($history_page).' of '.esc_html($page_count).' </span>
+								<a class="button backuply-next-page" '.(($page_count <= 1 || $history_page == $page_count) ? 'disabled' : 'href="'.esc_url(admin_url('?page=backuply&history_page='.($history_page+1).'#backuply-history')).'"').'>›</a>
+								<a class="button backuply-last-next-page" '.(($page_count <= 1 || $history_page == $page_count) ? 'disabled' : 'href="'.esc_url(admin_url('?page=backuply&history_page='.($page_count).'#backuply-history')).'"').'>››</a>
+								<form method="GET" action="'.esc_url(admin_url('?page=backuply#backuply-history')).'">
+								<input type="hidden" value="backuply" name="page"/>
+								<span class="backuply-pagination-input">Go to <input type="number" name="history_page" min="1" max="'.esc_attr($page_count).'" value="'.esc_attr($history_page).'"> Page</span>
+								</form>
+								</div></div>';
+					?>
+					</div>
+				</div>
+			</div>
+			<?php } ?>
 		</div>
 	</div>
 
@@ -2004,6 +2118,33 @@ if(file_exists(BACKUPLY_BACKUP_DIR . 'restoration/restoration.php')){
 			</h2>
 		</div>
 		<div class="backuply-settings-block">
+			<div class="backuply-diagnosis">
+				<h3><?php esc_html_e('Diagnosis', 'backuply');?></h3>
+				<div class="backuply-diagnosis-wrap">
+					<p><?php esc_html_e('If your backups are getting stuck at 17%, one reason could be something is blocking the request, for that try this self diagnosis to know the reason.', 'backuply'); ?></p>
+					<p><?php esc_html_e('For detailed response keep debug mode on from Backuply settings.', 'backuply'); ?></p>
+					<button type="button" class="button button-primary backuply-diagnosis-status">
+						<?php esc_html_e('Start Self Diagnosis', 'backuply'); ?>
+					</button>
+					<button type="button" class="button button-secondary backuply-load-debug"><?php echo __('Load debug file', 'backuply');?></button>
+				<div class="backuply-diagnosis-result"></div>
+			</div>
+		</div>
+
+		<?php if(backuply_is_litespeed()){ ?>
+		<div class="backuply-diagnosis">
+			<h3><?php esc_html_e('LiteSpeed noabort', 'backuply');?></h3>
+			<div class="backuply-diagnosis-wrap">
+				<p><?php esc_html_e('LiteSpeed can kill long-running PHP processes (such as a backup) when the client connection goes away. Backuply adds a "noabort" rule to your root .htaccess to prevent this.', 'backuply'); ?></p>
+				<p><?php esc_html_e('Click the button below to scan your .htaccess and add the noabort rule if it is missing.', 'backuply'); ?></p>
+				<button type="button" class="button button-primary backuply-noabort-scan">
+					<?php esc_html_e('Scan & Fix LiteSpeed noabort', 'backuply'); ?>
+				</button>
+				<div class="backuply-noabort-result"></div>
+			</div>
+		</div>
+		<?php } ?>
+
 			You can contact the Backuply Team via email. Our email address is <a href="mailto:support@backuply.com">support@backuply.com</a> or through Our <a href="https://softaculous.deskuss.com/open.php?topicId=17" target="_blank">Support Ticket System</a>
 			<p>You can also check the docs <a href="https://backuply.com/docs/" target="_blank">https://backuply.com/docs/</a> to review some common issues. You might find something helpful there.</p>
 			
@@ -2077,10 +2218,12 @@ if(file_exists(BACKUPLY_BACKUP_DIR . 'restoration/restoration.php')){
 						array('Backup To S3', false),
 						array('Backup To WebDAV', false),
 						array('Backup To S3 Compatible Storage', false),
+						array('Backup To pCloud', false),
 						array('Auto Backups', false),
 						array('Backup Rotation', false),
 						array('WP-CLI Support', false),
-						array('Faster Support', false)
+						array('Faster Support', false),
+						array('Backup Before WordPress Core Update', false),
 					);
 				
 					foreach($features as $feature){
@@ -2108,69 +2251,18 @@ if(file_exists(BACKUPLY_BACKUP_DIR . 'restoration/restoration.php')){
 	</div>
 	<?php } ?>
 </div>
-<div class="backuply-modal" id="backuply-backup-progress" <?php echo $is_restoring ? '' : 'style="display:none;"';?> data-process="<?php echo $is_restoring ? 'restore' : 'backup';?>">
-	<div class="backuply-modal__inner">
-		<div class="backuply-modal__header">
-			<div class="backuply-modal-header__title">
-				<?php 
-				$active_proto = 'local';
-				$active_name = 'Local';
-				
-				if(isset($backuply['status']['backup_location']) && !empty($backuply_remote_backup_locs[$backuply['status']['backup_location']]['protocol'])){
-					$active_proto = $backuply_remote_backup_locs[$backuply['status']['backup_location']]['protocol'];
-					$active_name = $backuply_remote_backup_locs[$backuply['status']['backup_location']]['name'];
-				}
-				
-				if($is_restoring){
-					$restro_info = backuply_get_restoration_data();
-					
-					if(!empty($restro_info)){
-						$active_proto = $restro_info['protocol'];
-						$active_name = $restro_info['name'];
-					}
-				}
-				
-				echo '<img src="'.BACKUPLY_URL . '/assets/images/'.esc_attr($active_proto).'.svg'.'" height="26" width="26" title="'.esc_attr($active_name).'" class="backuply-modal-bak-icon"/>'
-				
-				?>
-				<span class="backuply-title-text">
-					<span class="backuply-title-backup"><?php esc_html_e('Backup in Progress', 'backuply'); ?></span>
-					<span class="backuply-title-restore"><?php esc_html_e('Restore in progress', 'backuply'); ?></span>
-				</span>
-				
-			</div>
-			
-			<div class="backuply-modal-header__actions">
-				<?php echo !empty($is_restoring) ? '' : '<span class="dashicons dashicons-no"></span>'; ?>
-			</div>
-		</div>
-		<div class="backuply-modal__content">
-			<p class="backuply-loc-bak-name" align="center"><?php echo esc_html__('Backup Location', 'backuply').':'.esc_html($active_proto); ?></p>
-			<p class="backuply-loc-restore-name" style="display:none" align="center">Restoring From: <?php echo esc_attr($active_proto); ?></p>
-			<p class="backuply-progress-extra-backup" align="center"><?php esc_html_e('We are backing up your site it may take some time.', 'backuply'); ?></p>
-			<p class="backuply-progress-extra-restore" align="center" style="display:none;"><?php esc_html_e('We are restoring your site it may take some time.', 'backuply'); ?></p>
-			<div class="backuply-progress-bar" ><div class="backuply-progress-value" style="width:0%;"  data-done="0%"></div></div>
-			<p id="backuply-rate-on-restore" align="center" style="display:none;"><a href="https://wordpress.org/support/plugin/backuply/reviews/?filter=5#new-post" target="_blank"><?php esc_html_e('Rate Us if you find Backuply useful', 'backuply'); ?></a></p>
-			<div class="backuply-backup-status">
-				
-			</div>
-		</div>
-		<div class="backuply-modal_footer">
-			<div>
-				<button class="button-secondary" id="backuply-kill-process-btn"><?php esc_html_e('Kill Process', 'backuply'); ?></button>
-			</div>
-			<div>
-				<button class="backuply-btn backuply-btn--danger backuply-stop-backup"><?php esc_html_e('Stop', 'backuply'); ?></button>
-				<button class="backuply-btn backuply-btn--success backuply-disabled backuply-backup-finish" disabled><?php esc_html_e('Finish', 'backuply'); ?></button>
-			</div>
-			</div>
-		</div>
-	</div>
-</div>
-
+<?php 
+	// Modal Progress 
+	backuply_modal_progress($is_restoring);
+?>
 <div class="postbox" id="backuply-backup-last-log" title="Last Backup Log" style="display:none;">
 	<span class="spinner"></span>
 	<div class="backuply-last-logs-block"></div>
+</div>
+
+<div class="postbox" id="backuply-backup-debug-log" title="Debug Logs" style="display:none;">
+	<span class="spinner"></span>
+	<div class="backuply-debug-log-block"></div>
 </div>
 <div class="postbox" id="backuply-restore-last-log" title="Last Restore Log" style="display:none;">
 	<span class="spinner"></span>
@@ -2322,4 +2414,24 @@ if(file_exists(BACKUPLY_BACKUP_DIR . 'restoration/restoration.php')){
 	</div>
 
 	<?php }
+}
+
+// Formats time if the time is in utc timezone
+function backuply_format_unix_time($unix_time){
+	// Making time zone conversions.
+	$unix_time = (int) $unix_time;
+
+	$default_timezone = date_default_timezone_get();
+	if($default_timezone == 'UTC' && class_exists('DateTime') && class_exists('DateTimeZone')){
+		$time_zone_string = wp_timezone_string();
+		$time_zone = new DateTimeZone($time_zone_string);
+		$date_time = new DateTime('@'.$unix_time);
+		$date_time->setTimezone($time_zone);
+		$formated_time = $date_time->format('jS F Y h:i A');
+
+		return $formated_time;
+	}
+
+	$formated_time = date('jS F Y h:i A', $unix_time);	
+	return $formated_time;
 }

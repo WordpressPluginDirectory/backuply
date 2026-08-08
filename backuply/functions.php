@@ -278,11 +278,14 @@ function backuply_timeout_check($is_restore) {
 
 // Create a config file and set it with a key
 function backuply_set_config() {
-	
-	$write['BACKUPLY_KEY'] = backuply_csrf_get_token();
-	// $write['RESTORE_KEY'] = backuply_csrf_get_token();
-	
-	update_option('backuply_config_keys', $write);
+	$cron = get_option('backuply_cron_settings', []);
+
+	if(empty($cron) || empty($cron['backuply_cron_schedule']) || $cron['backuply_cron_schedule'] !== 'custom'){
+		$write['BACKUPLY_KEY'] = backuply_csrf_get_token();
+		// $write['RESTORE_KEY'] = backuply_csrf_get_token();
+
+		update_option('backuply_config_keys', $write);
+	}
 }
 
 function backuply_set_config_file(){
@@ -444,10 +447,20 @@ function backuply_get_status($last_log = 0){
 	
 	$fh = fopen($log_file, 'r');
 	
+	if(empty($fh)){
+		return $logs;
+	}
+	
 	$seek_to = $last_log;
 	@fseek($fh, $seek_to);
 	
-	$lines = fread($fh, fstat($fh)['size']);
+	$stats = fstat($fh);
+	
+	if(empty($stats) || !is_array($stats) || empty($stats['size'])){
+		return $logs;
+	}
+	
+	$lines = fread($fh, $stats['size']);
 	fclose($fh);
 	$fh = null;
 	return $lines;
@@ -829,45 +842,99 @@ function backuply_install_plugin_complete_actions($install_actions, $api, $plugi
 	return $install_actions;
 }
 
-function backuply_get_backups_info(){
-	
+/**
+ * Gets a list of backups along with their info data.
+ *
+ * @param int $offset Starting offset (must be >= 0).
+ * @param int $limit  Maximum number of backups to return.
+ *                    Use -1 for no limit (default).
+ *
+ * @return array List of backups with associated info data.
+ */
+function backuply_get_backups_info_data($offset = 0, $limit = -1){
+
 	// Get all Backups Information from the "backups_info" folder.
 	$all_backup_info_files = backuply_glob('backups_info');
 	$backup_files_location = backuply_glob('backups');
 	
-	$backup_infos = array();
+	$backup_infos = [];
 
 	if(empty($all_backup_info_files)){
-		return [];
+		return $backup_infos;
 	}
 
+	// Not using glob becasue it is 10 times slower than scandir
+	//$info_files = glob($all_backup_info_files .'/*[0-9].php');
 	$info_files = @scandir($all_backup_info_files);
-	
+
 	if(empty($info_files)){
 		return $backup_infos;
 	}
 	
+	$info_files = array_diff($info_files, ['.', '..', 'index.php', 'index.html', 'debug.php']);
+
+	// Sorting the files based on the time in the file name.
+	rsort($info_files, SORT_STRING);
+
 	foreach($info_files as $files){
+		
+		if($limit == 0){
+			break;
+		}
+		
+		if($offset > 0){
+			$offset--;
+			continue;
+		}
 
-		if($files != '.' && $files != '..'){
+		$check_for_file = basename($files, '.php');
+
+		$file = file($all_backup_info_files.'/'.$files);
+		unset($file[0]);
+		$all_info = json_decode(implode('', $file));
+
+		$backup_file_location = $backup_files_location.'/'.$check_for_file.'.tar.gz';
+		if(file_exists($backup_file_location) || isset($all_info->backup_location)){
+
+			//Store all the files information in an array
+			$backup_infos[] = $all_info;
 			
-			$i = 0;
-			$check_for_file = basename($files, '.php');
-
-			$file = file($all_backup_info_files."/".$files);
-			unset($file[0]);
-			$all_info = json_decode(implode('', $file));
-
-			$backup_file_location = $backup_files_location.'/'.$check_for_file.'.tar.gz';
-			if(file_exists($backup_file_location) || isset($all_info->backup_location)){
-
-				//Store all the files information in an array
-				$backup_infos[] = $all_info;
+			if($limit > 0){
+				$limit--;
 			}
 		}
 	}
 
-	return $backup_infos;
+	// Count to calculate pages for pagination, and can be done here only.
+	$backups_info = [
+		'total_backups' => count($info_files),
+		'backup_infos' => $backup_infos
+	];
+
+	return $backups_info;
+}
+
+// This is just a wrapper to backuply_get_backups_info_data
+// So that we do not have to change the function call on other places
+function backuply_get_backups_info(){
+	$infos = backuply_get_backups_info_data();
+	
+	if(empty($infos) || empty($infos['backup_infos'])){
+		return [];
+	}
+	
+	return $infos['backup_infos'];
+}
+
+function backuply_get_backup_info($backup_name){
+	$backup_info_dir = backuply_glob('backups_info');
+	$backup_name_base = basename($backup_name, '.tar.gz');
+	
+	$file = file($backup_info_dir.'/'.$backup_name_base.'.php');
+	unset($file[0]);
+	$info = json_decode(implode('', $file), true);
+	
+	return $info;
 }
 
 // Deletes backups
@@ -892,7 +959,7 @@ function backuply_delete_backup($tar_file) {
 		if(!empty($backup_info->backup_location) && $backup_info->name == $bkey && array_key_exists($backup_info->backup_location, $backuply_remote_backup_locs)){
 
 			$backup_dir = $backuply_remote_backup_locs[$backup_info->backup_location]['full_backup_loc'];
-			$remote_stream_wrappers = array('dropbox', 'gdrive', 'softftpes', 'softsftp', 'webdav', 'aws', 'caws', 'onedrive', 'bcloud');
+			$remote_stream_wrappers = array('dropbox', 'gdrive', 'softftpes', 'softsftp', 'webdav', 'aws', 'caws', 'onedrive', 'bcloud', 'pcloud');
 
 			if(in_array($backuply_remote_backup_locs[$backup_info->backup_location]['protocol'], $remote_stream_wrappers)){
 
@@ -1082,7 +1149,7 @@ function backuply_sftp_connect($host, $username, $pass, $protocol = 'ftp', $port
 // Creates stream wrapper and includes the associated class
 function backuply_stream_wrapper_register($protocol, $classname){
 	
-	$protocols = array('dropbox', 'aws', 'caws', 'gdrive', 'softftpes', 'softsftp', 'webdav', 'onedrive', 'bcloud');
+	$protocols = array('dropbox', 'aws', 'caws', 'gdrive', 'softftpes', 'softsftp', 'webdav', 'onedrive', 'bcloud', 'pcloud');
 	
 	if(!in_array($protocol, $protocols)){
 		return true;
@@ -1238,7 +1305,7 @@ function backuply_sync_remote_backup_infos($location_id){
 		$info['backup_location'] = $location_id;
 		//backuply_print($info);
 		
-		$v = str_replace('.info', '.php', $v);
+		$v = preg_replace('/.info$/', '.php', $v);
 		
 		// Write the file
 		file_put_contents(backuply_glob('backups_info') .'/'.$v, "<?php exit();?>\n".json_encode($info, JSON_PRETTY_PRINT));
@@ -1617,8 +1684,8 @@ function backuply_init_restore($info){
 function backuply_restore_curl($info = array()) {
 	global $wpdb, $backuply;
 
-	$backup_file_loc = $info['backup_file_loc'];
 	$info['site_url'] = site_url();
+	$info['home_url'] = home_url();
 	$info['to_email'] = get_option('backuply_notify_email_address');
 	$info['admin_email'] = get_option('admin_email');
 	$info['ajax_url'] = admin_url('admin-ajax.php');
@@ -1703,14 +1770,26 @@ function backuply_get_status_key(){
 	return $content;
 }
 
-function backuply_get_quota($protocol){
+function backuply_get_quota($storage_id){
+	
+	// everything other than bcloud, we will get an ID.
+	if(!is_numeric($storage_id)){
+		$info = backuply_load_remote_backup_info($storage_id);
+	} else {
+		$info = backuply_get_loc_by_id($storage_id);	
+	}
+
+	if(empty($info) || empty($info['protocol'])){
+	    return false;
+	}
+
+	$protocol = $info['protocol'];
 
 	backuply_stream_wrapper_register($protocol, $protocol);
 	
 	if(class_exists($protocol) && method_exists($protocol, 'get_quota')){
 		$class = new $protocol();
 		
-		$info = backuply_load_remote_backup_info($protocol);
 		$quota = $class->get_quota($info['full_backup_loc']);
 
 		if(empty($quota)){
@@ -1761,6 +1840,10 @@ function backuply_schedule_quota_updation($location){
 function backuply_delete_tmp(){
 
 	$backup_folder = backuply_glob('backups');
+	
+	if(empty($backup_folder)){
+		return;
+	}
 
 	// Deleting files with dot(.) at start
 	$files = glob($backup_folder .'/.*.tar.gz');
@@ -1837,6 +1920,9 @@ function backuply_add_mime_types($mimes) {
 }
 
 function backuply_sanitize_filename($filename){
+	// other plugins can interfere in this function and break out functionality
+	remove_all_filters('sanitize_file_name');
+	
 	$filename = sanitize_file_name($filename);
 	// We need to remove "_" as sanitize_file_name adds it if the file 
 	// have more than 2 extensions, which in our case happens sometimes, if the 
@@ -1941,31 +2027,80 @@ function backuply_verify_status_log(){
 	return false;
 }
 
+// Detects whether the current request is being served by LiteSpeed.
+// The litespeed PHP extension is not loaded on every LiteSpeed installation,
+// so we check the SAPI name and SERVER_SOFTWARE which are more reliable.
+function backuply_is_litespeed(){
+
+	if(function_exists('php_sapi_name') && stripos(php_sapi_name(), 'litespeed') !== false){
+		return true;
+	}
+
+	if(!empty($_SERVER['SERVER_SOFTWARE']) && stripos($_SERVER['SERVER_SOFTWARE'], 'litespeed') !== false){
+		return true;
+	}
+
+	return false;
+}
+
 // LiteSpeed kills long running processes, and backups need to run long
 // So we have to prevent the default behaviour of LiteSpeed by using noabort rule.
+// Scans the root .htaccess for the noabort rule and adds it if missing.
+// Returns true when the rule was added.
+// Returns an array with 'message' and 'type' ('info'|'error'|'success') otherwise.
 function backuply_add_litespeed_noabort(){
 
-	if(!extension_loaded('litespeed')){
-		return;
+	if(!backuply_is_litespeed()){
+		return array(
+			'message' => __('LiteSpeed is not running on this server. The noabort rule is not needed.', 'backuply'),
+			'type'    => 'info',
+		);
 	}
 
 	$htaccess_file = ABSPATH .'.htaccess';
 
-	if(!file_exists($htaccess_file) || !is_writable($htaccess_file)){
-		return;
+	if(!file_exists($htaccess_file)){
+		return array(
+			'message' => __('The root .htaccess file does not exist. Please create it and try again.', 'backuply'),
+			'type'    => 'error',
+		);
+	}
+
+	if(!is_writable($htaccess_file)){
+		return array(
+			'message' => __('The root .htaccess file is not writable. Please check the file permissions and try again.', 'backuply'),
+			'type'    => 'error',
+		);
 	}
 
 	$rules = file_get_contents($htaccess_file);
 
-	if(!preg_match('/noabort/i', $rules)){
-		$rules .= "\n". "\n";
-		$rules .= '# BEGIN LiteSpeed'."\n";
-		$rules .= '<IfModule Litespeed>'."\n";
-		$rules .= 'SetEnv noabort 1'."\n";
-		$rules .= '</IfModule>'."\n";
-		$rules .= '# END LiteSpeed'."\n";
-
-		file_put_contents($htaccess_file, $rules);
+	// Check the entire file so a manually-added rule is respected and not duplicated.
+	if(preg_match('/noabort/i', $rules)){
+		return array(
+			'message' => __('The noabort rule is already present in your .htaccess. No changes were made.', 'backuply'),
+			'type'    => 'success',
+		);
 	}
-	
+
+	$rules .= "\n". "\n";
+	$rules .= '# BEGIN Backuply LiteSpeed'."\n";
+	$rules .= '<IfModule Litespeed>'."\n";
+	$rules .= 'SetEnv noabort 1'."\n";
+	$rules .= '</IfModule>'."\n";
+	$rules .= '# END Backuply LiteSpeed'."\n";
+
+	$written = file_put_contents($htaccess_file, $rules);
+
+	if($written === false){
+		return array(
+			'message' => __('Could not write the noabort rule to your .htaccess. Please check the file permissions.', 'backuply'),
+			'type'    => 'error',
+		);
+	}
+
+	return array(
+		'message' => __('The noabort rule was missing and has been added to your .htaccess.', 'backuply'),
+		'type'    => 'success',
+	);
 }

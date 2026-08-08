@@ -40,7 +40,7 @@
 * Copyright (c) 2012–2022, David Anderson (https://david.dw-perspective.org.uk). All rights reserved.
 */
 
-define('BACKUPLY_AWS_CHUNK_SIZE', 5242880); //5MB
+define('BACKUPLY_AWS_CHUNK_SIZE', 5242880); //5MB NOTE: If you increase this update it in remote_upload fn of backup_ins.php as well
 define('BACKUPLY_AWS_CHUNK_COUNT_LIMIT', 10000); //10k Chunk Limit
 
 class S3
@@ -262,7 +262,7 @@ class S3
 	{
 		self::$endpoint = $endpoint;
 		
-		if(strpos($endpoint, 'amazon') === FALSE && strpos($endpoint, 'cloudflare') === FALSE && strpos($endpoint, 'backblaze') === FALSE && strpos($endpoint, 'wasabi') === FALSE && strpos($endpoint, 'backuply') === FALSE) {
+		if(strpos($endpoint, 'digitaloceanspaces') !== FALSE){
 			self::setSignatureVersion('v2');
 		}
 

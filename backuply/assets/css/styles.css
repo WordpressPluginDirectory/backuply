@@ -85,8 +85,8 @@ a .dashicons {
     height: 16px;
     width: 16px;
     position: absolute;
-	left: -13px;
-	top: -2px;
+	left: -10px;
+	top: 2px;
     -webkit-animation: backuply-pulsate 1.2s ease-out;
     -webkit-animation-iteration-count: infinite; 
     opacity: 0.0
@@ -456,13 +456,15 @@ a .dashicons {
 	cursor: pointer;
 }
 
-.backuply-btn--danger {
+.backuply-tab .backuply-btn--danger,
+.backuply-modal .backuply-btn--danger{
 	background-color: #dc3545;
 	border: 1px solid #dc3545;
 	color: #FFF;
 }
 
-.backuply-btn--danger:hover {
+.backuply-tab .backuply-btn--danger:hover,
+.backuply-modal .backuply-btn--danger:hover {
 	background-color: #b81c2b;
 }
 
@@ -496,7 +498,8 @@ a .dashicons {
 	cursor: pointer;
 }
 
-.backuply-last-logs-block{
+.backuply-last-logs-block,
+.backuply-debug-log-block{
 	color: #FFF;
 	background-color: #000;
 	border-radius: 3px;
@@ -504,12 +507,13 @@ a .dashicons {
 }
 
 .backuply-auto-mark{
-	background-color: #dc3545;
-	color: white;
-	border-radius: 50px;
-	font-size: 0.8em;
-	font-weight:bold;
-	padding: 1px 3px;
+background: linear-gradient(135deg, #117f4c, #20c997);
+color: white;
+font-size: 0.8em;
+font-weight: bold;
+padding: 1px 5px;
+vertical-align: middle;
+border-radius:1px;
 }
 
 .backuply_exclude_file_block{
@@ -803,4 +807,81 @@ margin: 5px auto;
 line-height: 1.5;
 border-radius: 5px;
 border:1px solid #d9d9d9;
+}
+
+/* Pagination CSS*/
+.backuply-tablenav{
+height: 30px;
+margin: 6px 0 4px;
+padding-top: 5px;
+}
+
+#backuply-pagination{
+display: flex;
+justify-content: space-between;
+align-items: center;
+padding: 10px 0;
+}
+
+.backuply-pagination-links{
+display:flex;
+align-items:center; 
+gap:10px;
+}
+
+a.button.backuply-prev-page,
+a.button.backuply-next-page,
+a.button.backuply-prev-first-page,
+a.button.backuply-last-next-page{
+background-color: #2271b1;
+color: #fff;
+}
+
+.backuply-total-items,
+.backuply-pagination-info,
+.backuply-pagination-input{
+font-weight: 600;
+color:#555 ;
+}
+
+/* Input box */
+.backuply-pagination-input input{
+padding: 0px;
+text-align: center;
+}
+
+.tabs-wrapper .backuply-restore-btn,
+.tabs-wrapper .backuply-delete-btn,
+.tabs-wrapper .backuply-download-btn{
+height:35px;
+min-height: 35px;
+font-size: 12px;
+line-height: 1.2;
+display: inline-flex;
+align-items: center;
+}
+
+#backuply-history-table tbody td{
+padding:5px 3px;
+}
+
+.backuply-diagnosis-wrap{
+margin-bottom: 1em;
+}
+
+.backuply-diagnosis-result,
+.backuply-noabort-result{
+margin: 10px 0px;
+padding: 10px;
+display: none;
+}
+
+.backuply-diagnosis h3:first-child{
+	margin-top:0;	
+}
+
+.backuply-diagnosis{
+	border-bottom: 1px solid #eee;
+	margin-bottom:2rem;
+	padding-bottom:10px;
 }

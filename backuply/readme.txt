@@ -2,13 +2,13 @@
 Contributors: softaculous, backuply
 Tags: backup, restore, database backup, cloud backup, wordpress backup, migration, cloning, backuply, local backup, amazon s3, database, google drive, gdrive, dropbox, FTP, SCP, SFTP, onedrive, WebDAV
 Requires at least: 4.7
-Tested up to: 6.8
+Tested up to: 7.0
 Requires PHP: 5.5
-Stable tag: 1.4.6
+Stable tag: 1.5.6
 License: LGPL v2.1
 License URI: http://www.gnu.org/licenses/lgpl-2.1.html
 
-Backup, restores, and migration with Backuply are fairly simple with a wide range of storage options from Local Backups, FTP to cloud options like AWS S3, Dropbox, Google Drive, SFTP, FTPS, WebDav.
+Backup, restores, and migration with Backuply are fairly simple with a wide range of storage options from Local Backups, FTP to cloud options like AWS S3, Dropbox, Google Drive, SFTP, FTPS, WebDAV, pCloud.
 
 == Description ==
 
@@ -44,6 +44,7 @@ You can find our official documentation at [https://backuply.com/docs](https://b
 * **Backup to Microsoft One Drive**
 * **Backup to Amazon S3**
 * **Backup to WebDAV**
+* **Backup to pCloud**
 * **Backup to S3 Compatible Storages:** Added support for DigitalOcean Spaces, Linode Object Storage, Vultr Object Storage, and Cloudflare R2.
 * **Support for WP-CLI:** You can use Backuply through WP-CLI
 * **Professional Support:** Get professional support and more features to make backup your website with [Backuply](https://backuply.com/pricing)
@@ -84,6 +85,59 @@ Go To your WordPress install -> Plugins -> Add New Button -> In Search Box searc
 7. **Backup Process** easy to understand backup progress.
 
 == Changelog ==
+
+= 1.5.6 =
+* [Bug-Fix] There was an issue related to Windows path that has been fixed, reported by "Youssef EL MSIYAH"
+
+= 1.5.5 =
+* [Feature Pro] pCloud Backup location support added.
+* [Improvement] noabort rule for LiteSpeed cache was added earlier if litespeed PHP extension was present, now it adds based on PHP SAPI or SERVER_SOFTWARE.
+* [Improvement] Option to scan and add LiteSpeed noabort rule added to Backuply support tab.
+* [Bug-Fix] There was a Google Drive access token cache issue, that has been fixed.
+
+= 1.5.4 (21st July 2026) =
+* [Feature Pro] Option to trigger Backup when updating WordPress Core.
+* [Improvement] Added Self Diagnosis, help knowing if some firewall is blocking Backuply's requests, and quick access to Backuply debug logs.
+* [Bug-Fix] There was an issue with the quota updating, if 2 locations of same Cloud location type were added.
+* [Bug-Fix] Minor UI fixes caused because of incompatibility with the new WordPress 7.0.
+* [Task] backup-migration and backup folders inside wp-content won't be backed up.
+
+= 1.5.3 (27th May 2026) =
+* [Improvement] Added option to use custom Backup rotation.
+* [Bug-Fix Pro] When AWS and AWS compatible locations were edited they were changing the base backup path, this has been fixed.
+* [Bug-Fix] There was an issue when activating of the Backuply plugin on Multi Site, this has been fixed.
+* [Task] Tested with WordPress 7.0.
+
+= 1.5.2 (26th February 2026) =
+* [Improvement] Backup history is now sorted based on time, with recent backups at the top.
+* [Improvement] Backup history now includes pagination, displaying 20 backups per page.
+* [Bug-Fix] On backup database connection was not closing after usage, which cause issue for a user, this has been fixed.
+* [Task] .htaccess file has been excluded from restoration, it causes issue if environment of the server changes.
+* [Task] Adding Cache burst in case where backup requests were hitting Cloudflare cache.
+
+= 1.5.1 (14th November 2025) =
+* [Bug-Fix] Backups could get stuck when certain special characters were present in file names.
+* [Bug-Fix] An issue with uploading backups to Backuply Cloud and AWS has been resolved.
+* [Bug-Fix] On some servers, the status logs stopped updating during backups because the server flagged the update requests as a loop. This issue has been addressed.
+
+= 1.5.0 (30th September 2025) =
+* [Bug-Fix Pro] Custom cron key was getting updated on every update which was breaking Auto Backups for the users who were using Custom cron, this has been fixed.
+* [Bug-Fix] There was an issue with restore from custom locations, this has been fixed.
+
+= 1.4.9 (17th September 2025) =
+* [Improvement Pro] Now you can use any S3 Compatible storage with Backuply.
+* [Bug Fix] Improved variable sanitization.
+
+= 1.4.8 (2nd September 2025) =
+* [Bug-Fix] There was an issue with migration, when WP_HOME and WP_SITEURL constants were set in the wp-config.php of the backup.
+* [Task] All .log files will be excluded form backups.
+* [Task] Minor refactor of the code.
+
+= 1.4.7 (23rd July 2025) =
+* [Bug-Fix Pro] For some cases, upload to OneDrive was getting stuck because OneDrive's servers were either breaking the request abruptly or not responding. This has been fixed.
+* [Bug-Fix] In certain cases, the info file and version file were not getting added to the backup; this has been fixed.
+* [Bug-Fix] Size of a file uploaded through FTP was showing wrong when the backup size was more than 2GB; this has been fixed.
+* [Task]  Backuply now handles UTC-based time zones as well. Earlier, it used to handle just the city-based based timezones of WordPress General settings.
 
 = 1.4.6 (17th June 2025) =
 * [Bug-Fix] There was issue with restore on sites where Cyrillic characters were getting used, this has been fixed.

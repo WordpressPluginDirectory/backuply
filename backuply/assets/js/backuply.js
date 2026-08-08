@@ -9,6 +9,110 @@ jQuery(document).ready(function(){
 	
 	backuply_handle_tab();
 	
+	// Backup request diagnosis to see if we are being blocked.
+	jQuery('.backuply-diagnosis-status').on('click', function(){
+		var $result = jQuery('.backuply-diagnosis-result');
+		var $button = jQuery(this);
+
+		$button.prop('disabled', true);
+		$result.text('Checking...').show().css({
+			'background-color': '#d4edda',
+			'border-color': '#c3e6cb',
+			'color': '#155724'
+		});
+
+		jQuery.ajax({
+			url: backuply_obj.ajax_url,
+			method: 'POST',
+			data: {
+				action: 'backuply_do_diagnosis',
+				check_key: 'cf_key',
+				security: backuply_obj.nonce,
+			},
+			success: function(response) {
+				$button.prop('disabled', false);
+
+				if(response.success){
+					// Request reached backuply_ins.php - Cloudflare is NOT the issue
+					$result.html(
+						'<p><span style="color:green;">' + response.data.message + '</span></p>'+(response.data.is_cloudflare ? '<p>Cloudflare is enabled on this site</p>' : '')
+						
+					).css({
+						'background-color': '#d4edda',
+						'border-color': '#c3e6cb',
+						'color': '#155724'
+					});
+				} else {
+					// Request FAILED to reach backuply_ins.php
+					var errorData = response.data;
+					var technicalInfo = errorData.technical ? '<br><small>Technical: ' + errorData.technical + '</small>' : '';
+					var suggestion = errorData.suggestion ? '<br><br><strong>How to fix:</strong> ' + errorData.suggestion : '';
+
+					$result.html(
+						'<p><strong style="color:red;">' + errorData.message + '</strong>' + suggestion + '<br><br>' + technicalInfo+'</p>'+(response.data.is_cloudflare ? '<p>Cloudflare is enabled on this site</p>' : '')
+					).css({
+						'background-color': '#f8d7da',
+						'border-color': '#f5c6cb',
+						'color': '#721c24'
+					});
+				}
+			},
+			error: function() {
+				$result.text('Failed to connect to server.').css({
+					'background-color': '#f8d7da',
+					'border-color': '#f5c6cb',
+					'color': '#721c24'
+				});
+			}	
+		});
+	});
+		
+	// Scan .htaccess for the LiteSpeed noabort rule and add it if missing.
+	jQuery('.backuply-noabort-scan').on('click', function(){
+		var $result = jQuery('.backuply-noabort-result');
+		var $button = jQuery(this);
+
+		$button.prop('disabled', true);
+		$result.text('Checking...').show().css({
+			'background-color': '#d1ecf1',
+			'border-color': '#bee5eb',
+			'color': '#0c5460'
+		});
+
+		jQuery.ajax({
+			url: backuply_obj.ajax_url,
+			method: 'POST',
+			data: {
+				action: 'backuply_scan_fix_noabort',
+				security: backuply_obj.nonce
+			},
+			success: function(response) {
+				$button.prop('disabled', false);
+
+				var type = (response.data && response.data.type) ? response.data.type : (response.success ? 'success' : 'error');
+				var isInfo = response.info === true || type === 'info';
+				var effectiveType = isInfo ? 'info' : type;
+
+				var styles = {
+					'info':    {'background-color': '#d1ecf1', 'border-color': '#bee5eb', 'color': '#0c5460'},
+					'success': {'background-color': '#d4edda', 'border-color': '#c3e6cb', 'color': '#155724'},
+					'error':   {'background-color': '#f8d7da', 'border-color': '#f5c6cb', 'color': '#721c24'}
+				};
+
+				var message = response.data && response.data.message ? response.data.message : '';
+				$result.html('<p>' + message + '</p>').css(styles[effectiveType] || styles.error);
+			},
+			error: function() {
+				$button.prop('disabled', false);
+				$result.text('Failed to connect to server.').css({
+					'background-color': '#f8d7da',
+					'border-color': '#f5c6cb',
+					'color': '#721c24'
+				});
+			}
+		});
+	});
+	
 	// To Copy text on click
 	jQuery('.backuply-code-copy').click( function() {
 		navigator.clipboard.writeText(jQuery(this).parent().find('.backuply-code-text').text().trim());
@@ -44,8 +148,17 @@ jQuery(document).ready(function(){
 	});
 	
 	backuply_cron_backup_style(backuply_obj.cron_task);
+	
+	jQuery('#backup_rotation').on('change', function(){
+		backuply_toggle_custom_rotation();
+	});
+	
+	jQuery('#backup_rotation_custom').on('input', function(){
+		backuply_rotation_warning_check();
+	});
 
 	jQuery("#check_all_edit").on("click", function(event){
+
 		if(this.checked == true){
 			jQuery('[name="add_to_fileindex[]"]').prop("checked", true);
 		}else{
@@ -113,6 +226,41 @@ jQuery(document).ready(function(){
 
 		jQuery('.backuply-modal').show();
 		backuply_backup_progress();
+	});
+	
+	// Debug Log Modal
+	jQuery('.backuply-load-debug').click(function(){
+		jQuery('#backuply-backup-debug-log').dialog({
+			autoOpen: true,
+			draggable: false,
+			height: 600,
+			width: 600,
+			modal: true,
+			title : 'Debug Logs'
+		});
+		
+		let spinner = jQuery('#backuply-backup-debug-log').find('.spinner');
+		let log_block = jQuery('.backuply-debug-log-block');
+		log_block.html('');
+		
+		spinner.addClass('is-active');
+		
+		jQuery.ajax({
+			url: backuply_obj.ajax_url,
+			method : 'POST',
+			data : {
+				'security' : backuply_obj.nonce,
+				'action' : 'backuply_load_debug',
+			},success : function(response){
+				if(!response.success){
+					return;
+				}
+				
+				log_block.html('<pre>'+response.data+'</pre>');
+			}
+		}).always(function(){
+			spinner.removeClass('is-active');
+		})
 	});
 	
 	
@@ -401,28 +549,31 @@ jQuery(document).ready(function(){
 	});
 	
 	jQuery('.backuply-pattern-delete').on('click', backuply_delete_exclude_rule);
-	
-	jQuery('.backuply-js-tree').jstree({
-		'core' : {
-			'multiple' : false,
-			'data' : function(node, cb){
-				jQuery.ajax({
-					method : 'POST',
-					url : backuply_obj.ajax_url,
-					data : {
-						action : 'backuply_get_jstree',
-						security : backuply_obj.nonce,
-						nodeid : node,
-					},
-					success : function(res){
-						cb.call(this, res.nodes);
-					}
-				})
-			},
-			
-		}
-	});
-});	
+
+	if(typeof jQuery.fn.jstree !== 'undefined'){
+		jQuery('.backuply-js-tree').jstree({
+			'core' : {
+				'multiple' : false,
+				'data' : function(node, cb){
+					jQuery.ajax({
+						method : 'POST',
+						url : backuply_obj.ajax_url,
+						data : {
+							action : 'backuply_get_jstree',
+							security : backuply_obj.nonce,
+							nodeid : node,
+						},
+						success : function(res){
+							cb.call(this, res.nodes);
+						}
+					})
+				},
+
+			}
+		});
+	}
+
+});
 
 // Handles Dashboard Tabs
 function backuply_handle_tab() {
@@ -608,6 +759,11 @@ function backuply_stop_backup(jEle) {
 function backuply_create_backup(jEle) {
 	event.preventDefault();
 	
+	if(jEle.is(':disabled')){
+		alert('A backup is already running');
+		return;
+	}
+	
 	var form = jEle.closest('form'),
 		values = form.serializeArray();
 		
@@ -677,7 +833,10 @@ function backuply_progress_init(is_restore = false, title = 'Backup') {
 	});
 	modal.find('.backuply-backup-status').empty();
 	modal.find('.backuply-progress-value').css('width', '0%').text('0%');
+	
 	jQuery('[name="backuply_create_backup"]').addClass('backuply-disabled');
+	jQuery('[name="backuply_create_backup"]').prop('disabled', true);
+	
 	jQuery('[name="backuply_stop_backup"]').prop('disabled', false);
 	
 	if(is_restore) {
@@ -778,7 +937,7 @@ function checkprotocol(is_edit = false){
 		backuply_toggle_bcloud();
 	}
 
-	if(jQuery(protocol_id).val() == 'gdrive' || jQuery(protocol_id).val() == 'onedrive'){
+	if(jQuery(protocol_id).val() == 'gdrive' || jQuery(protocol_id).val() == 'onedrive' || jQuery(protocol_id).val() == 'pcloud'){
 		hide_ftp();
 		hide_aws_s3bucket();
 		hide_dropbox();
@@ -964,22 +1123,22 @@ function backuply_backup_progress() {
 	status_box = jQuery('.backuply-backup-status'),
 	stop_modal = jQuery('.backuply-stop-backup');
 
-  backuply_obj.status_req_url = backuply_obj.ajax_url + '?action=backuply_check_backup_status';
+	backuply_obj.status_req_url = backuply_obj.ajax_url + '?action=backuply_check_backup_status';
 	
 	if(backuply_status.hasOwnProperty('is_restore') && backuply_status.is_restore){
 		if(!backuply_status.progress){
 			backuply_status.progress = 0;
 		}
 
-    if(backuply_obj.status_url_code && backuply_obj.status_url_code == 1){
-      backuply_obj.status_req_url = backuply_obj.site_url + '/backuply-restore.php?status_key=' + backuply_obj.status_key;
+		if(backuply_obj.status_url_code && backuply_obj.status_url_code == 1){
+		  backuply_obj.status_req_url = backuply_obj.site_url + '/backuply-restore.php?status_key=' + backuply_obj.status_key;
 
-    } else if(backuply_obj.status_url_code && backuply_obj.status_url_code == 2){
-      backuply_obj.status_req_url = backuply_obj.ajax_url + '?action=backuply_restore_status_log&status_key=' + backuply_obj.status_key;
-    }else {
-      // We will first try the status_log option only as, limit users face issue with this version and when using this we dont need to use the ajax method.
-      backuply_obj.status_req_url = backuply_obj.backuply_url + '/status_logs.php?status_key=' + backuply_obj.status_key;
-    }
+		} else if(backuply_obj.status_url_code && backuply_obj.status_url_code == 2){
+		  backuply_obj.status_req_url = backuply_obj.ajax_url + '?action=backuply_restore_status_log&status_key=' + backuply_obj.status_key;
+		}else {
+		  // We will first try the status_log option only as, limit users face issue with this version and when using this we dont need to use the ajax method.
+		  backuply_obj.status_req_url = backuply_obj.backuply_url + '/status_logs.php?status_key=' + backuply_obj.status_key;
+		}
 	}
 
 	if(!backuply_status.hasOwnProperty('is_restore')) {
@@ -1004,6 +1163,8 @@ function backuply_backup_progress() {
 		url : backuply_obj.status_req_url,
 		data : ajax_data,
 		success : function(res) {
+			backuply_obj.progress_retry = 0;
+			
 			if(!res.success) {
 				backuply_status.fail_count++;
 				
@@ -1037,10 +1198,12 @@ function backuply_backup_progress() {
 					break;
 				}
 				
+				// Splitting the log to extract the data for render
 				let [log, status, percent] = text.split('|'),
 					color = '';
 				percent = parseInt(percent);
-
+				
+				// Getting the color of the log
 				switch(status) {
 					case 'info':
 						color = 'yellow';
@@ -1092,10 +1255,10 @@ function backuply_backup_progress() {
 						status_box.find('.backuply-upload-progress').remove();
 					}
 					status_box.append(log);
-				} else {
-					html += '<p'+ (color ? ' style="color:'+color+'"' : '')+ '>';
-					
-					if(status == 'success') {
+			} else {
+				html += '<p'+ (color ? ' style="color:'+color+'"' : '')+ ' class="backuply-log-'+status+'">';
+				
+				if(status == 'success') {
 						// This is to show a link to rate plugin only if the restore has been success.
 						if(log == 'Restore performed successfully.'){
 							jQuery('#backuply-rate-on-restore').show();
@@ -1148,19 +1311,37 @@ function backuply_backup_progress() {
 				setTimeout(backuply_backup_progress, 2000);
 			}
 		}, error : function(res){
-      if(!res){
-        return;
-      }
-			
-      if(res.status == 403 || res.status == 404){
-        if(!backuply_obj.status_url_code){
-          backuply_obj.status_url_code = 1;
-          backuply_backup_progress();
-        } else if(backuply_obj.status_url_code && backuply_obj.status_url_code == 1) {
-          backuply_obj.status_url_code = 2;
-          backuply_backup_progress();
-        }
-      }
+			if(!res){
+				return;
+			}
+
+			if(res.status == 403 || res.status == 404){
+				if(!backuply_obj.status_url_code){
+					backuply_obj.status_url_code = 1;
+					backuply_backup_progress();
+				} else if(backuply_obj.status_url_code && backuply_obj.status_url_code == 1) {
+					backuply_obj.status_url_code = 2;
+					backuply_backup_progress();
+				}
+			}
+
+			// If the status check failed we need to retry
+			if(res.status > 499 && (!backuply_obj.hasOwnProperty('progress_retry') || backuply_obj.progress_retry < 3)){
+				if(typeof backuply_obj.progress_retry == 'undefined'){
+					backuply_obj.progress_retry = 0;
+				}
+
+				let retry_time_seconds = 2000;
+				backuply_obj.progress_retry++;
+				
+				// 508 response code means server detected our requests as a loop
+				// So we will delay our request a little, so we can get over the server detection time frame.
+				if(res.status == 508){
+					retry_time_seconds = 5000;
+				}
+
+				setTimeout(backuply_backup_progress, retry_time_seconds);	
+			}
 		}
 	});
 }
@@ -1345,10 +1526,36 @@ function backuply_cron_backup_style(select_value){
 	if(!select_value) {
 		jQuery("#backuply_cron_checkbox").hide();
 		jQuery('#backup_rotation').prop('disabled', true);
+		jQuery('#backup_rotation_custom').hide();
+		jQuery('#backup_rotation_warning').hide();
 	}
 	
 	if(select_value == 'custom') {
 		jQuery('#backuply-custom-cron').show();
+	}
+	
+	if(select_value) {
+		backuply_toggle_custom_rotation();
+	}
+}
+
+function backuply_toggle_custom_rotation(){
+	var rotVal = jQuery('#backup_rotation').val();
+	if(rotVal === 'custom'){
+		jQuery('#backup_rotation_custom').show();
+		backuply_rotation_warning_check();
+	} else {
+		jQuery('#backup_rotation_custom').hide();
+		jQuery('#backup_rotation_warning').hide();
+	}
+}
+
+function backuply_rotation_warning_check(){
+	var val = parseInt(jQuery('#backup_rotation_custom').val());
+	if(!isNaN(val) && val > 30){
+		jQuery('#backup_rotation_warning').show();
+	} else {
+		jQuery('#backup_rotation_warning').hide();
 	}
 }
 
@@ -1834,6 +2041,12 @@ function backuply_upload_backup(ev){
 	let allowed_types = ['application/gzip', 'application/x-gzip'];
 	if(!dropped_file.name.indexOf('.tar.gz') === -1 || !allowed_types.includes(dropped_file.type)){
 		show_alert(error_div, 'Please select a .tar.gz file, only .tar.gz files are backup files.', 'error');
+		return;
+	}
+	
+	const regex = /^wp_.*_\d{4}-\d{2}-\d{2}_.*\.tar\.gz/;
+	if(!regex.test(dropped_file.name)){
+		show_alert(error_div, 'File name is of unexpected format, it should be of fromat wp_domain_name_YYYY-MM-DD_HH-MM-SS.tar.gz.', 'error');
 		return;
 	}
 

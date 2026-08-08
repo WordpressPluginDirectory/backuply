@@ -50,7 +50,7 @@ function backuply_tar_archive($tarname, $file_list, $handle_remote = false){
 	backuply_log('Archiving your WP INSTALL Now');
 
 	$tar_archive = new backuply_tar($tarname, '', $handle_remote);
-	$tar_archive->setIgnoreList(['debug.log', 'wp-content/cache']);
+	$tar_archive->setIgnoreList(['debug.log', 'wp-content/cache', '*.\.log', 'error-log', 'wp-content/backup-migration/']);
 
 	$res = $tar_archive->createModify($file_list, '', '');
 	
@@ -219,6 +219,13 @@ function backuply_mysql_fn($shost, $suser, $spass, $sdb, $sdbfile){
 	fclose($handle);
 	
 	backuply_backup_stop_checkpoint();
+
+	// Close the connection
+	if(!empty($link)){
+		backuply_mysql_close($link);
+		$link = null;
+	}
+
 	// Just check that file is created or not ??
 	if(file_exists($sdbfile)){
 	
@@ -1080,6 +1087,21 @@ function backuply_mysql_free_result($result){
 	return $return;
 }
 
+// Close mysql connection
+function backuply_mysql_close($conn){
+	if(empty($conn)){
+		return true;
+	}
+
+	if(extension_loaded('mysqli')){
+		@mysqli_close($conn);
+	} else {
+		@mysql_close($conn);
+	}
+
+	return true;
+}
+
 function backuply_getFieldsMeta($result){
 	// Build an associative array for a type look up
 	
@@ -1273,7 +1295,7 @@ function backuply_update_status(){
 	}
 
 	$backuply['status']['name'] = $data['name'];
-	$backuply['status']['last_file'] = !empty($GLOBALS['end_file']) ? $GLOBALS['end_file'] : '';
+	$backuply['status']['last_file'] = !empty($GLOBALS['end_file']) ? base64_encode($GLOBALS['end_file']) : '';
 	$backuply['status']['added_file_count'] = !empty($GLOBALS['added_file_count']) ? $GLOBALS['added_file_count'] : 0;
 	$backuply['status']['backup_db'] = $data['backup_db'];
 	$backuply['status']['backup_dir'] = $data['backup_dir'];
@@ -1308,7 +1330,32 @@ function backuply_info_json(&$info_data = []){
 	$info_data['btime'] = time();
 	$info_data['auto_backup'] = isset($data['auto_backup']) ? $data['auto_backup'] : false;
 	$info_data['ext'] = 'tar.gz';
-	$info_data['size'] = isset($backuply['status']['remote_file_path']) ? filesize($backuply['status']['remote_file_path']) : (isset($GLOBALS['successfile']) ? filesize($GLOBALS['successfile']) : false);
+
+	if(isset($backuply['status']['remote_file_path'])){
+		// We need to handle ftp size manually because, ftp stream does not gives correct size when the file is over 2GB
+		// As on some systems the ftp stream could be using 32bit.
+		if(strpos($backuply['status']['remote_file_path'], 'ftp:') === 0 && function_exists('ftp_connect')){
+			$ftp_url = parse_url($backuply['status']['remote_file_path']);
+			if(!isset($ftp_url['port'])){
+				$ftp_url['port'] = 21;
+			}
+
+			$ftp_conn = ftp_connect($ftp_url['host'], $ftp_url['port']);
+			if(!empty($ftp_conn)){
+				if(ftp_login($ftp_conn, rawurldecode($ftp_url['user']), rawurldecode($ftp_url['pass']))){
+					$ftp_size = ftp_size($ftp_conn, $ftp_url['path']);
+				}
+			}
+		}
+
+		$info_data['size'] = (empty($ftp_size) ? filesize($backuply['status']['remote_file_path']) : $ftp_size);
+
+	} else if(isset($GLOBALS['successfile'])){
+		$info_data['size'] = filesize($GLOBALS['successfile']);
+	} else {
+		$info_data['size'] = false;
+	}
+
 	$info_data['backup_site_url'] = get_site_url();
 	$info_data['backup_site_path'] = backuply_cleanpath(get_home_path());
 	
@@ -1545,6 +1592,12 @@ function backuply_backup_curl($action) {
 	}
 
 	$url = site_url() . '/?action='.$action.'&security='. $nonce;
+
+	// Cloudflare was returning cached HIT on this request making the request to fail
+	// So we will be adding a cache buster to prevent cached version of the endpoint.
+	if(isset($_SERVER['HTTP_CF_RAY'])){
+	    $url .= '&cachebuster='.time();
+	}
 	
 	backuply_status_log('About to call self to prevent timeout', 'info');
 
@@ -1602,6 +1655,17 @@ function backuply_remote_upload($finished = false){
 	backuply_status_log('Upload Start Position (L'.$backuply['status']['loop'].') : '.$backuply['status']['init_pos']);
 	
 	$backuply['status']['chunk'] = 262144; // 2MB
+	
+	// For storages who use bcloud lib, like aws, caws, and bcloud the chunk size need to be 5MB
+	// NOTE: If you plan to increase this size, make sure to increase it in the bcloud.php chunksize as well
+	if(
+		strpos($backuply['status']['remote_file_path'], 'bcloud') === 0 || 
+		strpos($backuply['status']['remote_file_path'], 'aws') === 0 || 
+		strpos($backuply['status']['remote_file_path'], 'caws') === 0
+	){
+		$backuply['status']['chunk'] = 5242880; // 5MB
+	}
+
 	$file_size = filesize($backuply['status']['successfile']);
 	$chunks = ceil($file_size / $backuply['status']['chunk']);
 	$chunk_no = isset($backuply['status']['chunk_no']) ? $backuply['status']['chunk_no'] : 1;
@@ -1686,7 +1750,7 @@ function backuply_remote_upload($finished = false){
 			$remote_fp = fopen(dirname($backuply['status']['remote_file_path']).'/'.$GLOBALS['data']['name'].'.info', 'ab');
 			fwrite($remote_fp, $info_file);
 			fclose($remote_fp);
-		
+
 		}
 		
 		backuply_die('DONE');
@@ -1730,7 +1794,7 @@ if(!empty($backuply['excludes']['exact'])) {
 }
 
 //Create the filename
-$server_name = !empty($_SERVER['SERVER_NAME']) ? wp_kses_post(wp_unslash($_SERVER['SERVER_NAME'])) : '';
+$server_name = !empty($_SERVER['SERVER_NAME']) ? backuply_sanitize_filename(wp_unslash($_SERVER['SERVER_NAME'])) : '';
 $data['name'] =  !isset($backuply['status']['name']) ? (defined('SITEPAD') ? 'sp_' : 'wp_').$server_name.'_'.date('Y-m-d_H-i-s') : $backuply['status']['name'];
 
 //The path where all backups are stored
@@ -1823,7 +1887,7 @@ $f_list = $pre_soft_list = $post_soft_list = array(); // Files/Folder which has 
 // Empty last file everytime as a precaution
 $GLOBALS['added_file_count'] = !empty($backuply['status']['added_file_count']) ? $backuply['status']['added_file_count'] : '';
 $GLOBALS['last_file'] = '';
-$GLOBALS['last_file'] = !empty($backuply['status']['last_file']) ? $backuply['status']['last_file'] : '';
+$GLOBALS['last_file'] = !empty($backuply['status']['last_file']) ? base64_decode($backuply['status']['last_file']) : '';
 
 if(!empty($GLOBALS['last_file'])){
 	$GLOBALS['last_file'] = rawurldecode($GLOBALS['last_file']);
@@ -1847,12 +1911,16 @@ if(!empty($backuply['status']['init_data'])) {
 }
 
 // Save the version
-@file_put_contents($data['path'].'/tmp/'.$data['name'].'/softver.txt', BACKUPLY_VERSION);	
+if(!file_exists($data['path'].'/tmp/'.$data['name'].'/softver.txt')){
+	@file_put_contents($data['path'].'/tmp/'.$data['name'].'/softver.txt', BACKUPLY_VERSION);
+}
 $GLOBALS['replace']['from']['softver'] = $data['path'].'/tmp/'.$data['name'].'/softver.txt';
 $GLOBALS['replace']['to']['softver'] = 'softver.txt';
 
 // Save the info file data
-@file_put_contents($data['path'].'/tmp/'.$data['name'].'/'.$data['name'].'.php', backuply_info_json());
+if(!file_exists($data['path'].'/tmp/'.$data['name'].'/'.$data['name'].'.php')){
+	@file_put_contents($data['path'].'/tmp/'.$data['name'].'/'.$data['name'].'.php', backuply_info_json());
+}
 $GLOBALS['replace']['from']['backupinfo'] = $data['path'].'/tmp/'.$data['name'].'/'.$data['name'].'.php';
 $GLOBALS['replace']['to']['backupinfo'] = $data['name'] . '.php';
 
@@ -1912,6 +1980,12 @@ if(!empty($data['backup_db']) && !empty($data['softdb']) && empty($backuply['sta
 	
 	$backuply['status']['backup_db_done'] = 1;
 	backuply_status_log('Creation of SQL dump completed', 'working', 24);
+
+	// Close the mysql connection opened, creating for dump
+	if(!empty($sql_conn)){
+		backuply_mysql_close($sql_conn);
+		$sql_conn = null;
+	}
 }
 
 //Backup the DIRECTORY
@@ -1994,8 +2068,7 @@ if(!empty($GLOBALS['bfh']['softperms'])){
 $GLOBALS['post_soft_list'][] = $data['path'].'/tmp/'.$data['name'].'/softver.txt';
 $GLOBALS['post_soft_list'][] = $data['path'].'/tmp/'.$data['name'].'/'.$data['name'].'.php';
 
-if(empty($GLOBALS['error']) && (!empty($f_list) || !empty($post_soft_list) || !empty($pre_soft_list))){
-	
+if(empty($GLOBALS['error']) && (!empty($f_list) || !empty($GLOBALS['post_soft_list']) || !empty($pre_soft_list))){
 	// Set default values
 	$GLOBALS['start'] = 0;
 	$GLOBALS['end_file'] = '';
