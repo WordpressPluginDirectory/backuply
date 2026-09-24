@@ -170,7 +170,7 @@ function backuply_backup_request(){
 	$res = wp_remote_get($url, array(
 		'timeout' => 0.01,
 		'blocking' => false,
-		'cookies' => array(LOGGED_IN_COOKIE => $_COOKIE[LOGGED_IN_COOKIE]),
+		'cookies' => $_COOKIE,
 		'sslverify' => false,
 		'user-agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
 	));
@@ -571,7 +571,7 @@ function backuply_creating_session(){
 	
 	// Security Check
 	if(!backuply_verify_self(backuply_optreq('security'), true)){
-		backuply_status_log('Security Check Failed', 'error');
+		backuply_status_log('Attempt made to generate a session but failed due to unmatched security keys', 'info');
 		die();
 	}
 	

@@ -2,9 +2,9 @@
 Contributors: softaculous, backuply
 Tags: backup, restore, database backup, cloud backup, wordpress backup, migration, cloning, backuply, local backup, amazon s3, database, google drive, gdrive, dropbox, FTP, SCP, SFTP, onedrive, WebDAV
 Requires at least: 4.7
-Tested up to: 7.0
+Tested up to: 7.1
 Requires PHP: 5.5
-Stable tag: 1.5.6
+Stable tag: 1.5.8
 License: LGPL v2.1
 License URI: http://www.gnu.org/licenses/lgpl-2.1.html
 
@@ -85,6 +85,15 @@ Go To your WordPress install -> Plugins -> Add New Button -> In Search Box searc
 7. **Backup Process** easy to understand backup progress.
 
 == Changelog ==
+
+= 1.5.8 (23rd September 2026) =
+* [Improvement Pro] Added Code Signing: Every update now verifies the code signature to ensure secure updates.
+
+= 1.5.7 (2nd September 2026)  =
+* [Bug-Fix] All cookies were not being passed in a backup request, that has been handled now.
+* [Bug-Fix] Restore was showing to have failed security check, this has been fixed.
+* [Bug-Fix] On migration the maintenance mode was not getting started because of wrong path, fixed now.
+* [Bug-Fix] In certain cases, when attempting to make a final call after import of DB in restoration process the database connection would not respond, this has been handled.
 
 = 1.5.6 =
 * [Bug-Fix] There was an issue related to Windows path that has been fixed, reported by "Youssef EL MSIYAH"

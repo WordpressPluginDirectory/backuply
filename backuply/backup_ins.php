@@ -1611,8 +1611,8 @@ function backuply_backup_curl($action) {
 		]
 	);
 
-	if(!empty($_COOKIE[LOGGED_IN_COOKIE])){
-		$args['cookies'] = array(LOGGED_IN_COOKIE => $_COOKIE[LOGGED_IN_COOKIE]);
+	if(!empty($_COOKIE)){
+		$args['cookies'] = $_COOKIE;
 	}
 
 	wp_remote_get($url, $args);

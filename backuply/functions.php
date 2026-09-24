@@ -1726,6 +1726,7 @@ function backuply_restore_curl($info = array()) {
 		'timeout' => 0.01,
 		'blocking' => false,
 		'sslverify' => false,
+		'cookies' => $_COOKIE,
 		'headers' => [
 			'Referer' => (!empty($_SERVER['REQUEST_SCHEME']) ? $_SERVER['REQUEST_SCHEME'] : 'http') .'://'. $_SERVER['SERVER_NAME'],
 		],

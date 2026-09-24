@@ -2923,7 +2923,22 @@ function final_restore_response($output, $error_str = '') {
 	$curl->setOpt(CURLOPT_SSL_VERIFYPEER, FALSE);
 	$curl->setOpt(CURLOPT_SSL_VERIFYHOST, FALSE);
 	$curl->setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36');
-	$curl->get($url);
+
+	// Right after a restore the DB can still be unreachable (slow IO), WordPress then answers
+	// 500 "Error establishing a database connection" and dies before our handler ever runs.
+	// So retry on 5xx only. A curl timeout (status 0) means WP is alive and still working on it.
+	for($try = 0; $try < 3; $try++){
+		@set_time_limit(60); // Re-arm, so the retries can never be what times us out
+		sleep(5);
+
+		$curl->get($url);
+
+		if($curl->httpStatusCode < 500){
+			break;
+		}
+
+		backuply_log('Restore response got HTTP '.$curl->httpStatusCode.', retrying ('.$try.')', true);
+	}
 
 	die();
 }
@@ -3433,7 +3448,7 @@ if(!empty($data['restore_db']) && $GLOBALS['current_status'] < 2){
 	
 	// --- Enabling maintenance mode ---
 	$maintenance_string = '<?php $upgrading = ' . time() . '; ?>';
-	file_put_contents(cleanpath($data['backup_site_path']) . '/.maintenance', $maintenance_string);  // We need to update everytime the script calls itself, becuase .maintenance gets deleted after 10 minutes of inactivity with the file.
+	file_put_contents(cleanpath($data['softpath']) . '/.maintenance', $maintenance_string);  // We need to update everytime the script calls itself, becuase .maintenance gets deleted after 10 minutes of inactivity with the file.
 	backuply_status_log('Maintainance mode enabled', 'info', !empty($data['restore_dir']) ? 68 : 25);
 
 	$dbuser = $data['softdbuser'];
@@ -3547,8 +3562,8 @@ if(!empty($data['restore_db']) && $GLOBALS['current_status'] < 2){
 	backuply_status_log('Import has been completed', 'working', !empty($data['restore_dir']) ? 70 : 28);
 	
 	// --- Disabling Maintenance mode ---
-	if(file_exists($data['backup_site_path'] . '/.maintenance')){
-		unlink($data['backup_site_path'] . '/.maintenance');
+	if(file_exists($data['softpath'] . '/.maintenance')){
+		unlink($data['softpath'] . '/.maintenance');
 		backuply_status_log('Maintainance mode disabled', 'info', !empty($data['restore_dir']) ? 72 : 29);
 	}
 
